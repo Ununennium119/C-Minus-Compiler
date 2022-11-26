@@ -106,6 +106,7 @@ class Scanner:
         # Position in buffer
         self.forward: int = 0
         self.current_char: Optional[str] = None
+        self.is_file_ended: bool = False
         self.line_number: int = 0
 
         # Token temporary storage
@@ -134,12 +135,12 @@ class Scanner:
                 error_tuple = (self.current_token, "Invalid input")
         elif error == Error.INCOMPLETE_TOKEN:
             if self.current_state.number in {13, 14}:
-                error_tuple = (f"{''.join(self.token_buffer[:9])} ...", "Unclosed comment")
+                error_tuple = (f"{''.join(self.token_buffer[:6])} ...", "Unclosed comment")
             else:
                 error_tuple = (self.current_token, "Undefined Error!")
         else:
             error_tuple = (self.current_token, "Undefined Error!")
-        self.error_file.write(f"{error_tuple}\n")
+        self.error_file.write(f"{self.line_number}.  ({error_tuple[0]}, {error_tuple[1]})\n")
 
     def get_token_tuple(self) -> Tuple[str, str]:
         if self.current_state.number == 2:
@@ -169,37 +170,45 @@ class Scanner:
 
     def get_next_token(self) -> Optional[Tuple]:
         """Return next token of input_file. None if EOF."""
+        if self.is_file_ended:
+            return None
+
         self.token_buffer.clear()
         self.current_state = self.states[0]
         while True:
-            # Check terminal state
+            # Check terminal
             if self.current_state.is_terminal:
                 # Terminal state
                 if self.current_state.is_lookahead:
+                    # update line number
+                    if self.current_char == '\n':
+                        self.line_number -= 1
                     self.token_buffer.pop()
                     self.forward_step_back()
                 return self.get_token_tuple()
 
             # Non-terminal state
             self.current_char = self.get_next_char()
-            # Check EOF
-            if self.current_char is None:
-                # EOF
-                if self.current_state.number in {1, 3, 6, 9, 11}:
-                    self.forward_step_back()
-                    return self.get_token_tuple()
-                self.handle_error(Error.INCOMPLETE_TOKEN)
+            # update line number
+            if self.current_char == '\n':
+                self.line_number += 1
+            # file ended if EOF
+            self.is_file_ended = self.current_char == self.EOF
+            # EOF if file ended at state#0
+            if self.is_file_ended and self.current_state.number == 0:
                 return None
-
-            # not EOF
             self.token_buffer.append(self.current_char)
-            # Choosing appropriate transition
+            # Choosing matching transition
             for transition in self.current_state.out_transitions:
                 if self.current_char in transition.charset:
                     self.current_state = transition.dest
                     break
-            else:  # No appropriate transition found -> Error
-                self.handle_error(Error.NO_TRANSITION)
+            else:  # No matching transition found -> Error
+                if self.is_file_ended:
+                    self.handle_error(Error.INCOMPLETE_TOKEN)
+                    return None
+                else:
+                    self.handle_error(Error.NO_TRANSITION)
 
     def forward_step_back(self):
         """Move <forward> back"""
@@ -259,12 +268,14 @@ class Scanner:
         self.states[0].add_transition(Transition(self.states[0], self.states[16], self.whitespaces))
         self.states[0].add_transition(Transition(self.states[0], self.states[17], {'*'}))
         self.states[1].add_transition(Transition(self.states[1], self.states[1], self.digits))
-        self.states[1].add_transition(Transition(self.states[1], self.states[2], self.symbols.union(self.whitespaces, self.EOF)))
+        self.states[1].add_transition(Transition(self.states[1], self.states[2], self.symbols.union(self.whitespaces,
+                                                                                                    {self.EOF})))
         self.states[3].add_transition(Transition(self.states[3], self.states[3], self.alphanumerics))
-        self.states[3].add_transition(Transition(self.states[3], self.states[4], self.symbols.union(self.whitespaces, self.EOF)))
+        self.states[3].add_transition(Transition(self.states[3], self.states[4], self.symbols.union(self.whitespaces,
+                                                                                                    {self.EOF})))
         self.states[6].add_transition(Transition(self.states[6], self.states[7], {'='}))
-        self.states[6].add_transition(Transition(self.states[6], self.states[8], self.valid_chars.union(self.EOF) - {'='}))
-        self.states[9].add_transition(Transition(self.states[9], self.states[10], self.valid_chars.union(self.EOF) - {'*', '/'}))
+        self.states[6].add_transition(Transition(self.states[6], self.states[8], self.valid_chars.union({self.EOF}) - {'='}))
+        self.states[9].add_transition(Transition(self.states[9], self.states[10], self.valid_chars.union({self.EOF}) - {'*', '/'}))
         self.states[9].add_transition(Transition(self.states[9], self.states[11], {'/'}))
         self.states[9].add_transition(Transition(self.states[9], self.states[13], {'*'}))
         self.states[11].add_transition(Transition(self.states[11], self.states[11], self.all_chars - {'\n'}))
