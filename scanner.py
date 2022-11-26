@@ -107,7 +107,7 @@ class Scanner:
         self.forward: int = 0
         self.current_char: Optional[str] = None
         self.is_file_ended: bool = False
-        self.line_number: int = 0
+        self.line_number: int = 1
 
         # Token temporary storage
         self.token_buffer: List[str] = []
@@ -135,7 +135,10 @@ class Scanner:
                 error_tuple = (self.current_token, "Invalid input")
         elif error == Error.INCOMPLETE_TOKEN:
             if self.current_state.number in {13, 14}:
+                line_number: int = self.line_number - self.token_buffer.count('\n')
                 error_tuple = (f"{''.join(self.token_buffer[:6])} ...", "Unclosed comment")
+                self.error_file.write(f"{line_number}.  ({error_tuple[0]}, {error_tuple[1]})\n")
+                return
             else:
                 error_tuple = (self.current_token, "Undefined Error!")
         else:
@@ -283,7 +286,8 @@ class Scanner:
         self.states[13].add_transition(Transition(self.states[13], self.states[13], self.all_chars - {'*'}))
         self.states[13].add_transition(Transition(self.states[13], self.states[14], {'*'}))
         self.states[14].add_transition(Transition(self.states[14], self.states[15], {'/'}))
-        self.states[17].add_transition(Transition(self.states[18], self.states[17], self.all_chars - {'/'}))
+        self.states[14].add_transition(Transition(self.states[14], self.states[13], self.all_chars - {'/'}))
+        self.states[17].add_transition(Transition(self.states[17], self.states[18], self.all_chars - {'/'}))
 
 
 if __name__ == '__main__':

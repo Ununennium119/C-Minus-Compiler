@@ -1,1 +1,2 @@
-2.  (/* bad ..., Unclosed comment)
+2.  (*/, Unmatched comment)
+3.  (/* bad ..., Unclosed comment)
