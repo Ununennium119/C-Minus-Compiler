@@ -1,1 +1,1 @@
-('/* hello...', 'Unclosed comment')
+('', 'Undefined Error!')
