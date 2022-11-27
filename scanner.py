@@ -179,7 +179,7 @@ class Scanner:
             self.symbol_table[token] = [len(self.symbol_table) + 1]
         return token
 
-    def get_next_token(self) -> Optional[Tuple]:
+    def get_next_token(self) -> Optional[Tuple[str, str]]:
         """Return next token of input_file. None if EOF."""
         if self.is_file_ended:
             return None
@@ -196,7 +196,12 @@ class Scanner:
                     # update line number
                     if self.current_char == '\n':
                         self.line_number -= 1
-                return self.get_token_tuple()
+                token = self.get_token_tuple()
+                if token[0] in {self.WHITESPACE, self.COMMENT}:
+                    self.token_buffer.clear()
+                    self.current_state = self.states[0]
+                else:
+                    return token
 
             # Non-terminal state
             self.current_char = self.get_next_char()
@@ -301,21 +306,18 @@ class Scanner:
         self.states[14].add_transition(Transition(self.states[14], self.states[13], self.all_chars - {'/'}))
         self.states[17].add_transition(Transition(self.states[17], self.states[18], self.all_chars - {'/'}))
 
+    def save_errors(self):
+        if len(self.errors_dict) == 0:
+            self.error_file.write("There is no lexical error.")
+        else:
+            for line_num in sorted(self.errors_dict.keys()):
+                line = ' '.join([f"({error.content}, {error.title})" for error in self.errors_dict[line_num]])
+                self.error_file.write(f"{line_num}.\t{line}\n")
+        self.error_file.flush()
+        self.error_file.close()
 
-if __name__ == '__main__':
-    scanner = Scanner()
-    while True:
-        current_token = scanner.get_next_token()
-        if current_token is None:
-            print("current token: ", "EOF")
-            print("Program Finished")
-            break
-        print("current token: ", current_token)
-    if len(scanner.errors_dict) == 0:
-        scanner.error_file.write("There is no lexical error.")
-    else:
-        for line_num in sorted(scanner.errors_dict.keys()):
-            line = ' '.join([f"({error.content}, {error.title})" for error in scanner.errors_dict[line_num]])
-            scanner.error_file.write(f"{line_num}.  {line}\n")
-    for key, value in scanner.symbol_table.items():
-        scanner.symbol_table_file.write(f"{value[0]}.	{key}\n")
+    def save_symbols(self):
+        for key, value in self.symbol_table.items():
+            self.symbol_table_file.write(f"{value[0]}.	{key}\n")
+        self.symbol_table_file.flush()
+        self.symbol_table_file.close()

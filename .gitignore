@@ -1,5 +1,7 @@
 /venv/*
 /.idea/*
+/__pycache__/*
 
-input.txt
 /testcases/*
+/*.txt
+/tester.py
