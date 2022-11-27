@@ -6,23 +6,37 @@ from typing import List, Optional, Set, Dict, Tuple
 class State:
     """
     A class used to represent a state in scanner's DFA.
-
-    Attributes:
-        number : int: the number of the state
-        out_transitions : List[Transition]: transitions sourcing from the state
-        is_terminal : bool: determines if the state is terminal or not
-        is_lookahead : bool: determines if the state is lookahead or not
     """
 
     def __init__(self, number: int):
-        """ Inits State
+        """ Inits State.
 
         :arg number: the number of the state
         """
-        self.number: int = number
-        self.out_transitions: List[Transition] = []
-        self.is_terminal: bool = False
-        self.is_lookahead: bool = False
+        self._number: int = number
+        self._out_transitions: List[Transition] = []
+        self._is_terminal: bool = False
+        self._is_lookahead: bool = False
+
+    @property
+    def number(self) -> int:
+        """Return the number of the state."""
+        return self._number
+
+    @property
+    def out_transitions(self) -> List["Transition"]:
+        """Return transitions sourcing from the state."""
+        return self._out_transitions
+
+    @property
+    def is_terminal(self) -> bool:
+        """Determines if the state is terminal or not."""
+        return self._is_terminal
+
+    @property
+    def is_lookahead(self) -> bool:
+        """Determines if the state is lookahead or not."""
+        return self._is_lookahead
 
     def add_transition(self, transition: "Transition"):
         """Adds a transition to the state.
@@ -32,33 +46,43 @@ class State:
 
     def set_terminal(self):
         """Sets the state as terminal."""
-        self.is_terminal = True
+        self._is_terminal = True
 
     def set_lookahead(self):
         """Sets the state as lookahead."""
-        self.is_lookahead = True
+        self._is_lookahead = True
 
 
 class Transition:
     """
     A class used to represent a transition in scanner's DFA.
-
-    Attributes:
-        source: State: the source state
-        dest: State: the destination state
-        charset: Set[str]: the characters which make the transition happen
     """
 
     def __init__(self, source: State, dest: State, charset: set):
-        """Inits Transition
+        """Inits Transition.
 
         :arg source: the source state
         :arg dest: the destination state
         :arg charset: the characters which make the transition happen
         """
-        self.source: State = source
-        self.dest: State = dest
-        self.charset: Set[str] = charset
+        self._source: State = source
+        self._dest: State = dest
+        self._charset: Set[str] = charset
+
+    @property
+    def source(self) -> State:
+        """Return the source state"""
+        return self._source
+
+    @property
+    def dest(self) -> State:
+        """Return the destination state"""
+        return self._dest
+
+    @property
+    def charset(self) -> Set[str]:
+        """Return the characters which make the transition happen"""
+        return self._charset
 
 
 class ErrorType(Enum):
@@ -67,24 +91,55 @@ class ErrorType(Enum):
 
 
 class Error:
+    """
+    A class used to represent an error in scanner.
+    """
+
     def __init__(self, title: str, content: str, line_number: int):
-        self.title = title
-        self.content = content
-        self.line_number = line_number
+        """Inits Error.
+
+        :arg title: str: the title of the error
+        :arg content: str: the content of the error
+        :arg line_number: int: the line number of the error
+        """
+        self._title: str = title
+        self._content: str = content
+        self._line_number: int = line_number
+
+    @property
+    def title(self) -> str:
+        """Return the title of the error"""
+        return self._title
+
+    @property
+    def content(self) -> str:
+        """Return the content of the error"""
+        return self._content
+
+    @property
+    def line_number(self) -> int:
+        """Return the line number of the error"""
+        return self._line_number
 
 
 class Scanner:
-    BUFFER_SIZE = 1024
+    """
+    A C-Minus compiler's scanner.
 
+    Attributes:
+        NUM, ID, KEYWORD, SYMBOL, COMMENT, WHITESPACE   token types
+    """
     # character sets
-    EOF = None
-    all_chars: Set[str] = set(chr(i) for i in range(128))
-    digits: Set[str] = set(string.digits)
-    letters: Set[str] = set(string.ascii_letters)
-    alphanumerics: Set[str] = digits.union(letters)
-    symbols: Set[str] = {';', ':', ',', '[', ']', '(', ')', '{', '}', '+', '-', '*', '/', '=', '<'}
-    whitespaces: Set[str] = {' ', '\n', '\r', '\t', '\v', '\f'}
-    valid_chars: Set[str] = alphanumerics.union(symbols, whitespaces)
+    _EOF = None
+    _all_chars: Set[str] = set(chr(i) for i in range(128))
+    _digits: Set[str] = set(string.digits)
+    _letters: Set[str] = set(string.ascii_letters)
+    _alphanumerics: Set[str] = _digits.union(_letters)
+    _symbols: Set[str] = {';', ':', ',', '[', ']', '(', ')', '{', '}', '+', '-', '*', '/', '=', '<'}
+    _whitespaces: Set[str] = {' ', '\n', '\r', '\t', '\v', '\f'}
+    _valid_chars: Set[str] = _alphanumerics.union(_symbols, _whitespaces)
+
+    _keywords = {"if", "else", "void", "int", "while", "break", "switch", "default", "case", "return", "endif"}
 
     # token types
     NUM: str = "NUM"
@@ -94,175 +149,42 @@ class Scanner:
     COMMENT: str = "COMMENT"
     WHITESPACE: str = "WHITESPACE"
 
-    keywords = {"if", "else", "void", "int", "while", "break", "switch", "default", "case", "return", "endif"}
+    def __init__(self, buffer_size=1024):
+        """Inits Scanner
 
-    def __init__(self):
-        """Inits Scanner"""
-        # Input storage
-        self.input_file = open("input.txt", mode="r")
-        self.buffer: List[Optional[str]] = []
-
-        # Error storage
-        self.error_file = open("lexical_errors.txt", mode="w")
-        self.error_count: int = 0
-        self.errors_dict: Dict[int, List[Error]] = {}
-
-        # Symbol Table
-        self._initialize_symbol_table()
-        self.symbol_table_file = open("symbol_table.txt", mode="w")
-
-        # Position in buffer
-        self.forward: int = 0
-        self.current_char: Optional[str] = None
-        self.is_file_ended: bool = False
-        self.line_number: int = 1
-
-        # Token temporary storage
-        self.token_buffer: List[str] = []
-
-        # States
+        :arg buffer_size: size of the input buffer
+        """
+        # states
         self._initialize_states()
-        self.current_state: State = self.states[0]
+        self._current_state: State = self.states[0]
+
+        # input
+        self._input_file = open("input.txt", mode="r")
+        self._buffer_size = buffer_size
+        self._buffer: List[Optional[str]] = []
+        self._token_buffer: List[str] = []
+
+        # position in buffer
+        self._forward: int = 0
+        self._current_char: Optional[str] = None
+        self._is_file_ended: bool = False
+        self._line_number: int = 1
+
+        self._errors_dict: Dict[int, List[Error]] = {}
+
+        self._initialize_symbol_table()
 
     @property
-    def current_token(self) -> Optional[str]:
-        if self.token_buffer is not None:
-            return ''.join(self.token_buffer)
+    def _current_token(self) -> Optional[str]:
+        if self._token_buffer is not None:
+            return ''.join(self._token_buffer)
         else:
             return None
 
-    def handle_error(self, error_type: ErrorType):
-        error = None
-        if error_type == ErrorType.NO_TRANSITION:
-            if self.current_state.number == 1 and self.current_char in self.alphanumerics:
-                error = Error("Invalid number", self.current_token, self.line_number)
-            elif self.current_state.number == 17 and self.current_char == '/':
-                error = Error("Unmatched comment", self.current_token, self.line_number)
-            else:
-                error = Error("Invalid input", self.current_token, self.line_number)
-        elif error_type == ErrorType.INCOMPLETE_TOKEN:
-            if self.current_state.number in {13, 14}:
-                line_number: int = self.line_number - self.token_buffer.count('\n')
-                error = Error("Unclosed comment", f"{''.join(self.token_buffer[:7])}...", line_number)
-
-        if error is None:
-            error = Error("Undefined Error!", self.current_token, self.line_number)
-
-        if error.line_number in self.errors_dict:
-            self.errors_dict[error.line_number].append(error)
-        else:
-            self.errors_dict[error.line_number] = [error]
-
-    def get_token_tuple(self) -> Tuple[str, str]:
-        if self.current_state.number == 2:
-            return self.NUM, self.current_token
-        elif self.current_state.number == 4:
-            token_type = self.get_token_type()
-            return token_type, self.install_id()
-        elif self.current_state.number in {5, 7, 8, 10, 18}:
-            return self.SYMBOL, self.current_token
-        elif self.current_state.number in {12, 15}:
-            return self.COMMENT, self.current_token
-        elif self.current_state.number == 16:
-            return self.WHITESPACE, self.current_token
-
-    def get_token_type(self) -> str:
-        """Return \"KEYWORD\" if current token is a keyword else \"ID\"."""
-        if self.current_token in self.keywords:
-            return self.KEYWORD
-        return self.ID
-
-    def install_id(self):
-        """Adds current id to symbol table if it is not."""
-        token: str = self.current_token
-        if token not in self.symbol_table:
-            self.symbol_table[token] = [len(self.symbol_table) + 1]
-        return token
-
-    def get_next_token(self) -> Optional[Tuple[str, str]]:
-        """Return next token of input_file. None if EOF."""
-        if self.is_file_ended:
-            return None
-
-        self.token_buffer.clear()
-        self.current_state = self.states[0]
-        while True:
-            # Check terminal
-            if self.current_state.is_terminal:
-                # Terminal state
-                if self.current_state.is_lookahead:
-                    self.token_buffer.pop()
-                    self.forward_step_back()
-                    # update line number
-                    if self.current_char == '\n':
-                        self.line_number -= 1
-                token = self.get_token_tuple()
-                if token[0] in {self.WHITESPACE, self.COMMENT}:
-                    self.token_buffer.clear()
-                    self.current_state = self.states[0]
-                else:
-                    return token
-
-            # Non-terminal state
-            self.current_char = self.get_next_char()
-            # update line number
-            if self.current_char == '\n':
-                self.line_number += 1
-            # file ended if EOF
-            self.is_file_ended = self.current_char == self.EOF
-            # EOF if file ended at state#0
-            if self.is_file_ended and self.current_state.number == 0:
-                return None
-            self.token_buffer.append(self.current_char)
-            # Choosing matching transition
-            for transition in self.current_state.out_transitions:
-                if self.current_char in transition.charset:
-                    self.current_state = transition.dest
-                    break
-            else:  # No matching transition found -> Error
-                if self.is_file_ended:
-                    self.handle_error(ErrorType.INCOMPLETE_TOKEN)
-                    return None
-                else:
-                    self.handle_error(ErrorType.NO_TRANSITION)
-                    self.token_buffer.clear()
-                    self.current_state = self.states[0]
-
-    def forward_step_back(self):
-        """Move <forward> back"""
-        if self.forward == 0:
-            self.forward = 2 * self.BUFFER_SIZE - 1
-        else:
-            self.forward -= 1
-
-    def get_next_char(self) -> str:
-        """Return next character of input_file. None if EOF."""
-        # check if buffer needs to be reloaded
-        if self.forward == 0:
-            self.buffer[:self.BUFFER_SIZE] = self._load_buffer()
-        elif self.forward == self.BUFFER_SIZE:
-            self.buffer[self.BUFFER_SIZE:] = self._load_buffer()
-        char = self.buffer[self.forward]
-
-        # update forward
-        self.forward += 1
-        if self.forward == 2 * self.BUFFER_SIZE:
-            self.forward = 0
-
-        return char
-
-    def _load_buffer(self) -> List[Optional[str]]:
-        """Return a list of characters of length BUFFER_SIZE.
-
-        The characters are read from input_file.
-        """
-        temp = self.input_file.read(self.BUFFER_SIZE)
-        return [temp[i] if i < len(temp) else None for i in range(self.BUFFER_SIZE)]
-
-    def _initialize_symbol_table(self):
-        self.symbol_table: Dict[str, List[Optional]] = {}
-        for keyword in Scanner.keywords:
-            self.symbol_table[keyword] = [len(self.symbol_table) + 1]
+    @property
+    def line_number(self) -> int:
+        """Return current line number."""
+        return self._line_number
 
     def _initialize_states(self):
         """Creates states and transitions"""
@@ -278,46 +200,224 @@ class Scanner:
             self.states[i].set_lookahead()
 
         # add transitions
-        self.states[0].add_transition(Transition(self.states[0], self.states[1], self.digits))
-        self.states[0].add_transition(Transition(self.states[0], self.states[3], self.letters))
-        self.states[0].add_transition(Transition(self.states[0], self.states[5], self.symbols - {'/', '=', '*'}))
-        self.states[0].add_transition(Transition(self.states[0], self.states[6], {'='}))
-        self.states[0].add_transition(Transition(self.states[0], self.states[9], {'/'}))
-        self.states[0].add_transition(Transition(self.states[0], self.states[16], self.whitespaces))
-        self.states[0].add_transition(Transition(self.states[0], self.states[17], {'*'}))
-        self.states[1].add_transition(Transition(self.states[1], self.states[1], self.digits))
-        self.states[1].add_transition(Transition(self.states[1], self.states[2], self.symbols.union(self.whitespaces,
-                                                                                                    {self.EOF})))
-        self.states[3].add_transition(Transition(self.states[3], self.states[3], self.alphanumerics))
-        self.states[3].add_transition(Transition(self.states[3], self.states[4], self.symbols.union(self.whitespaces,
-                                                                                                    {self.EOF})))
-        self.states[6].add_transition(Transition(self.states[6], self.states[7], {'='}))
+        self.states[0].add_transition(
+            Transition(self.states[0], self.states[1], self._digits)
+        )
+        self.states[0].add_transition(
+            Transition(self.states[0], self.states[3], self._letters)
+        )
+        self.states[0].add_transition(
+            Transition(self.states[0], self.states[5], self._symbols - {'/', '=', '*'})
+        )
+        self.states[0].add_transition(
+            Transition(self.states[0], self.states[6], {'='})
+        )
+        self.states[0].add_transition(
+            Transition(self.states[0], self.states[9], {'/'})
+        )
+        self.states[0].add_transition(
+            Transition(self.states[0], self.states[16], self._whitespaces)
+        )
+        self.states[0].add_transition(
+            Transition(self.states[0], self.states[17], {'*'})
+        )
+        self.states[1].add_transition(
+            Transition(self.states[1], self.states[1], self._digits)
+        )
+        self.states[1].add_transition(
+            Transition(self.states[1], self.states[2], self._symbols.union(self._whitespaces, {self._EOF}))
+        )
+        self.states[3].add_transition(
+            Transition(self.states[3], self.states[3], self._alphanumerics)
+        )
+        self.states[3].add_transition(
+            Transition(self.states[3], self.states[4], self._symbols.union(self._whitespaces, {self._EOF}))
+        )
         self.states[6].add_transition(
-            Transition(self.states[6], self.states[8], self.valid_chars.union({self.EOF}) - {'='}))
+            Transition(self.states[6], self.states[7], {'='})
+        )
+        self.states[6].add_transition(
+            Transition(self.states[6], self.states[8], self._valid_chars.union({self._EOF}) - {'='})
+        )
         self.states[9].add_transition(
-            Transition(self.states[9], self.states[10], self.valid_chars.union({self.EOF}) - {'*', '/'}))
-        self.states[9].add_transition(Transition(self.states[9], self.states[11], {'/'}))
-        self.states[9].add_transition(Transition(self.states[9], self.states[13], {'*'}))
-        self.states[11].add_transition(Transition(self.states[11], self.states[11], self.all_chars - {'\n'}))
-        self.states[11].add_transition(Transition(self.states[11], self.states[12], {'\n', self.EOF}))
-        self.states[13].add_transition(Transition(self.states[13], self.states[13], self.all_chars - {'*'}))
-        self.states[13].add_transition(Transition(self.states[13], self.states[14], {'*'}))
-        self.states[14].add_transition(Transition(self.states[14], self.states[15], {'/'}))
-        self.states[14].add_transition(Transition(self.states[14], self.states[13], self.all_chars - {'/'}))
-        self.states[17].add_transition(Transition(self.states[17], self.states[18], self.all_chars - {'/'}))
+            Transition(self.states[9], self.states[10], self._valid_chars.union({self._EOF}) - {'*', '/'})
+        )
+        self.states[9].add_transition(
+            Transition(self.states[9], self.states[11], {'/'})
+        )
+        self.states[9].add_transition(
+            Transition(self.states[9], self.states[13], {'*'})
+        )
+        self.states[11].add_transition(
+            Transition(self.states[11], self.states[11], self._all_chars - {'\n'})
+        )
+        self.states[11].add_transition(
+            Transition(self.states[11], self.states[12], {'\n', self._EOF})
+        )
+        self.states[13].add_transition(
+            Transition(self.states[13], self.states[13], self._all_chars - {'*'})
+        )
+        self.states[13].add_transition(
+            Transition(self.states[13], self.states[14], {'*'})
+        )
+        self.states[14].add_transition(
+            Transition(self.states[14], self.states[15], {'/'})
+        )
+        self.states[14].add_transition(
+            Transition(self.states[14], self.states[13], self._all_chars - {'/'})
+        )
+        self.states[17].add_transition(
+            Transition(self.states[17], self.states[18], self._all_chars - {'/'})
+        )
+
+    def _initialize_symbol_table(self):
+        """Creates symbol table and adds keywords to it."""
+        self.symbol_table: Dict[str, List[Optional]] = {}
+        for keyword in Scanner._keywords:
+            self.symbol_table[keyword] = [len(self.symbol_table) + 1]
+
+    def _load_buffer(self) -> List[Optional[str]]:
+        """Return a list of characters of length BUFFER_SIZE.
+
+        The characters are read from input_file.
+        """
+        temp = self._input_file.read(self._buffer_size)
+        return [temp[i] if i < len(temp) else None for i in range(self._buffer_size)]
+
+    def _get_next_char(self) -> str:
+        """Return next character of input_file. None if EOF."""
+        # check if buffer needs to be reloaded
+        if self._forward == 0:
+            self._buffer[:self._buffer_size] = self._load_buffer()
+        elif self._forward == self._buffer_size:
+            self._buffer[self._buffer_size:] = self._load_buffer()
+        char = self._buffer[self._forward]
+
+        # update forward
+        self._forward += 1
+        if self._forward == 2 * self._buffer_size:
+            self._forward = 0
+
+        return char
+
+    def _decrement_forward(self):
+        """Move forward back."""
+        if self._forward == 0:
+            self._forward = 2 * self._buffer_size - 1
+        else:
+            self._forward -= 1
+
+    def _handle_error(self, error_type: ErrorType):
+        """Adds occurred error to error dict."""
+        error = None
+        if error_type == ErrorType.NO_TRANSITION:
+            if self._current_state.number == 1 and self._current_char in self._alphanumerics:
+                error = Error("Invalid number", self._current_token, self._line_number)
+            elif self._current_state.number == 17 and self._current_char == '/':
+                error = Error("Unmatched comment", self._current_token, self._line_number)
+            else:
+                error = Error("Invalid input", self._current_token, self._line_number)
+        elif error_type == ErrorType.INCOMPLETE_TOKEN:
+            if self._current_state.number in {13, 14}:
+                line_number: int = self._line_number - self._token_buffer.count('\n')
+                error = Error("Unclosed comment", f"{''.join(self._token_buffer[:7])}...", line_number)
+
+        if error is None:
+            error = Error("Undefined Error!", self._current_token, self._line_number)
+
+        if error.line_number in self._errors_dict:
+            self._errors_dict[error.line_number].append(error)
+        else:
+            self._errors_dict[error.line_number] = [error]
+
+    def _get_token_tuple(self) -> Tuple[str, str]:
+        """Return tuple with form (token_type, token_lexeme)"""
+        if self._current_state.number == 2:
+            return self.NUM, self._current_token
+        elif self._current_state.number == 4:
+            token_type = self._get_token_type()
+            return token_type, self._install_id()
+        elif self._current_state.number in {5, 7, 8, 10, 18}:
+            return self.SYMBOL, self._current_token
+        elif self._current_state.number in {12, 15}:
+            return self.COMMENT, self._current_token
+        elif self._current_state.number == 16:
+            return self.WHITESPACE, self._current_token
+
+    def _get_token_type(self) -> str:
+        """Return \"KEYWORD\" if current token is a keyword else \"ID\"."""
+        if self._current_token in self._keywords:
+            return self.KEYWORD
+        return self.ID
+
+    def _install_id(self):
+        """Adds current id to symbol table if it is not."""
+        token: str = self._current_token
+        if token not in self.symbol_table:
+            self.symbol_table[token] = [len(self.symbol_table) + 1]
+        return token
+
+    def get_next_token(self) -> Optional[Tuple[str, str]]:
+        """Return next token of input_file. None if EOF."""
+        if self._is_file_ended:
+            return None
+
+        self._token_buffer.clear()
+        self._current_state = self.states[0]
+        while True:
+            # Check terminal
+            if self._current_state.is_terminal:
+                # Terminal state
+                if self._current_state.is_lookahead:
+                    self._token_buffer.pop()
+                    self._decrement_forward()
+                    # update line number
+                    if self._current_char == '\n':
+                        self._line_number -= 1
+                token = self._get_token_tuple()
+                if token[0] in {self.WHITESPACE, self.COMMENT}:
+                    self._token_buffer.clear()
+                    self._current_state = self.states[0]
+                else:
+                    return token
+
+            # Non-terminal state
+            self._current_char = self._get_next_char()
+            # update line number
+            if self._current_char == '\n':
+                self._line_number += 1
+            # file ended if EOF
+            self._is_file_ended = self._current_char == self._EOF
+            # EOF if file ended at state#0
+            if self._is_file_ended and self._current_state.number == 0:
+                return None
+            self._token_buffer.append(self._current_char)
+            # Choosing matching transition
+            for transition in self._current_state.out_transitions:
+                if self._current_char in transition.charset:
+                    self._current_state = transition.dest
+                    break
+            else:  # No matching transition found -> Error
+                if self._is_file_ended:
+                    self._handle_error(ErrorType.INCOMPLETE_TOKEN)
+                    return None
+                else:
+                    self._handle_error(ErrorType.NO_TRANSITION)
+                    self._token_buffer.clear()
+                    self._current_state = self.states[0]
 
     def save_errors(self):
-        if len(self.errors_dict) == 0:
-            self.error_file.write("There is no lexical error.")
-        else:
-            for line_num in sorted(self.errors_dict.keys()):
-                line = ' '.join([f"({error.content}, {error.title})" for error in self.errors_dict[line_num]])
-                self.error_file.write(f"{line_num}.\t{line}\n")
-        self.error_file.flush()
-        self.error_file.close()
+        """Writes errors in lexical_errors.txt."""
+        with open("lexical_errors.txt", "w") as error_file:
+            if len(self._errors_dict) == 0:
+                error_file.write("There is no lexical error.")
+            else:
+                for line_num in sorted(self._errors_dict.keys()):
+                    line = ' '.join([f"({error.content}, {error.title})" for error in self._errors_dict[line_num]])
+                    error_file.write(f"{line_num}.\t{line}\n")
 
     def save_symbols(self):
-        for key, value in self.symbol_table.items():
-            self.symbol_table_file.write(f"{value[0]}.	{key}\n")
-        self.symbol_table_file.flush()
-        self.symbol_table_file.close()
+        """Writes symbol table in symbol_table.txt."""
+        with open("symbol_table.txt", mode="w") as symbol_table_file:
+            for key, value in self.symbol_table.items():
+                symbol_table_file.write(f"{value[0]}.\t{key}\n")

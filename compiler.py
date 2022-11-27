@@ -13,10 +13,10 @@ class Compiler:
             current_token = self.scanner.get_next_token()
             if current_token is None:
                 break
-            if self.scanner.line_number in tokens_dict:
-                tokens_dict[self.scanner.line_number].append(current_token)
+            if self.scanner._line_number in tokens_dict:
+                tokens_dict[self.scanner._line_number].append(current_token)
             else:
-                tokens_dict[self.scanner.line_number] = [current_token]
+                tokens_dict[self.scanner._line_number] = [current_token]
 
         tokens_file = open("tokens.txt", "w")
         for line_num in sorted(tokens_dict.keys()):
