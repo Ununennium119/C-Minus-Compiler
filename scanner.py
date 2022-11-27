@@ -61,9 +61,16 @@ class Transition:
         self.charset: Set[str] = charset
 
 
-class Error(Enum):
+class ErrorType(Enum):
     NO_TRANSITION = 1
     INCOMPLETE_TOKEN = 2
+
+
+class Error:
+    def __init__(self, title: str, content: str, line_number: int):
+        self.title = title
+        self.content = content
+        self.line_number = line_number
 
 
 class Scanner:
@@ -98,6 +105,7 @@ class Scanner:
         # Error storage
         self.error_file = open("lexical_errors.txt", mode="w")
         self.error_count: int = 0
+        self.errors_dict: Dict[int, List[Error]] = {}
 
         # Symbol Table
         self._initialize_symbol_table()
@@ -123,27 +131,27 @@ class Scanner:
         else:
             return None
 
-    def handle_error(self, error: Error):
-        # TODO: Also implement Panic Mode
-        self.error_count += 1
-        if error == Error.NO_TRANSITION:
+    def handle_error(self, error_type: ErrorType):
+        error = None
+        if error_type == ErrorType.NO_TRANSITION:
             if self.current_state.number == 1 and self.current_char in self.alphanumerics:
-                error_tuple = (self.current_token, "Invalid number")
+                error = Error("Invalid number", self.current_token, self.line_number)
             elif self.current_state.number == 17 and self.current_char == '/':
-                error_tuple = (self.current_token, "Unmatched comment")
+                error = Error("Unmatched comment", self.current_token, self.line_number)
             else:
-                error_tuple = (self.current_token, "Invalid input")
-        elif error == Error.INCOMPLETE_TOKEN:
+                error = Error("Invalid input", self.current_token, self.line_number)
+        elif error_type == ErrorType.INCOMPLETE_TOKEN:
             if self.current_state.number in {13, 14}:
                 line_number: int = self.line_number - self.token_buffer.count('\n')
-                error_tuple = (f"{''.join(self.token_buffer[:6])} ...", "Unclosed comment")
-                self.error_file.write(f"{line_number}.  ({error_tuple[0]}, {error_tuple[1]})\n")
-                return
-            else:
-                error_tuple = (self.current_token, "Undefined Error!")
+                error = Error("Unclosed comment", f"{''.join(self.token_buffer[:7])}...", line_number)
+
+        if error is None:
+            error = Error("Undefined Error!", self.current_token, self.line_number)
+
+        if error.line_number in self.errors_dict:
+            self.errors_dict[error.line_number].append(error)
         else:
-            error_tuple = (self.current_token, "Undefined Error!")
-        self.error_file.write(f"{self.line_number}.  ({error_tuple[0]}, {error_tuple[1]})\n")
+            self.errors_dict[error.line_number] = [error]
 
     def get_token_tuple(self) -> Tuple[str, str]:
         if self.current_state.number == 2:
@@ -183,11 +191,11 @@ class Scanner:
             if self.current_state.is_terminal:
                 # Terminal state
                 if self.current_state.is_lookahead:
+                    self.token_buffer.pop()
+                    self.forward_step_back()
                     # update line number
                     if self.current_char == '\n':
                         self.line_number -= 1
-                    self.token_buffer.pop()
-                    self.forward_step_back()
                 return self.get_token_tuple()
 
             # Non-terminal state
@@ -208,10 +216,12 @@ class Scanner:
                     break
             else:  # No matching transition found -> Error
                 if self.is_file_ended:
-                    self.handle_error(Error.INCOMPLETE_TOKEN)
+                    self.handle_error(ErrorType.INCOMPLETE_TOKEN)
                     return None
                 else:
-                    self.handle_error(Error.NO_TRANSITION)
+                    self.handle_error(ErrorType.NO_TRANSITION)
+                    self.token_buffer.clear()
+                    self.current_state = self.states[0]
 
     def forward_step_back(self):
         """Move <forward> back"""
@@ -277,8 +287,10 @@ class Scanner:
         self.states[3].add_transition(Transition(self.states[3], self.states[4], self.symbols.union(self.whitespaces,
                                                                                                     {self.EOF})))
         self.states[6].add_transition(Transition(self.states[6], self.states[7], {'='}))
-        self.states[6].add_transition(Transition(self.states[6], self.states[8], self.valid_chars.union({self.EOF}) - {'='}))
-        self.states[9].add_transition(Transition(self.states[9], self.states[10], self.valid_chars.union({self.EOF}) - {'*', '/'}))
+        self.states[6].add_transition(
+            Transition(self.states[6], self.states[8], self.valid_chars.union({self.EOF}) - {'='}))
+        self.states[9].add_transition(
+            Transition(self.states[9], self.states[10], self.valid_chars.union({self.EOF}) - {'*', '/'}))
         self.states[9].add_transition(Transition(self.states[9], self.states[11], {'/'}))
         self.states[9].add_transition(Transition(self.states[9], self.states[13], {'*'}))
         self.states[11].add_transition(Transition(self.states[11], self.states[11], self.all_chars - {'\n'}))
@@ -299,7 +311,11 @@ if __name__ == '__main__':
             print("Program Finished")
             break
         print("current token: ", current_token)
-    if scanner.error_count == 0:
+    if len(scanner.errors_dict) == 0:
         scanner.error_file.write("There is no lexical error.")
+    else:
+        for line_num in sorted(scanner.errors_dict.keys()):
+            line = ' '.join([f"({error.content}, {error.title})" for error in scanner.errors_dict[line_num]])
+            scanner.error_file.write(f"{line_num}.  {line}\n")
     for key, value in scanner.symbol_table.items():
         scanner.symbol_table_file.write(f"{value[0]}.	{key}\n")
