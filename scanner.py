@@ -272,9 +272,9 @@ class Scanner:
 
     def _initialize_symbol_table(self):
         """Creates symbol table and adds keywords to it."""
-        self.symbol_table: Dict[str, List[Optional]] = {}
+        self.symbol_table: Dict[str, int] = {}
         for keyword in Scanner._keywords:
-            self.symbol_table[keyword] = [len(self.symbol_table) + 1]
+            self.symbol_table[keyword] = len(self.symbol_table) + 1
 
     def _load_buffer(self) -> List[Optional[str]]:
         """Return a list of characters of length BUFFER_SIZE.
@@ -354,7 +354,7 @@ class Scanner:
         """Adds current id to symbol table if it is not."""
         token: str = self._current_token
         if token not in self.symbol_table:
-            self.symbol_table[token] = [len(self.symbol_table) + 1]
+            self.symbol_table[token] = len(self.symbol_table) + 1
         return token
 
     def get_next_token(self) -> Optional[Tuple[str, str]]:
@@ -420,4 +420,4 @@ class Scanner:
         """Writes symbol table in symbol_table.txt."""
         with open("symbol_table.txt", mode="w") as symbol_table_file:
             for key, value in self.symbol_table.items():
-                symbol_table_file.write(f"{value[0]}.\t{key}\n")
+                symbol_table_file.write(f"{value}.\t{key}\n")
