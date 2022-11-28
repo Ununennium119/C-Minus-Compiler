@@ -413,7 +413,7 @@ class Scanner:
                 error_file.write("There is no lexical error.")
             else:
                 for line_num in sorted(self._errors_dict.keys()):
-                    line = ' '.join([f"({error.content}, {error.title})" for error in self._errors_dict[line_num]])
+                    line = ''.join([f"({error.content}, {error.title}) " for error in self._errors_dict[line_num]])
                     error_file.write(f"{line_num}.\t{line}\n")
 
     def save_symbols(self):

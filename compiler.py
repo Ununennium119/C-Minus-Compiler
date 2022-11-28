@@ -28,7 +28,7 @@ class Compiler:
 
         tokens_file = open("tokens.txt", "w")
         for line_num in sorted(tokens_dict.keys()):
-            line = ' '.join([f"({token[0]}, {token[1]})" for token in tokens_dict[line_num]])
+            line = ''.join([f"({token[0]}, {token[1]}) " for token in tokens_dict[line_num]])
             tokens_file.write(f"{line_num}.\t{line}\n")
 
         self._scanner.save_errors()
