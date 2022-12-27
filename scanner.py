@@ -130,7 +130,7 @@ class Scanner:
         NUM, ID, KEYWORD, SYMBOL, COMMENT, WHITESPACE   token types
     """
     # character sets
-    _EOF = None
+    _EOF_char = None
     _all_chars: Set[str] = set(chr(i) for i in range(128))
     _digits: Set[str] = set(string.digits)
     _letters: Set[str] = set(string.ascii_letters)
@@ -148,6 +148,9 @@ class Scanner:
     SYMBOL: str = "SYMBOL"
     COMMENT: str = "COMMENT"
     WHITESPACE: str = "WHITESPACE"
+    EOF: str = "EOF"
+
+    EOF_symbol: str = "$"
 
     def __init__(self, buffer_size=1024):
         """Inits Scanner
@@ -225,22 +228,22 @@ class Scanner:
             Transition(self.states[1], self.states[1], self._digits)
         )
         self.states[1].add_transition(
-            Transition(self.states[1], self.states[2], self._symbols.union(self._whitespaces, {self._EOF}))
+            Transition(self.states[1], self.states[2], self._symbols.union(self._whitespaces, {self._EOF_char}))
         )
         self.states[3].add_transition(
             Transition(self.states[3], self.states[3], self._alphanumerics)
         )
         self.states[3].add_transition(
-            Transition(self.states[3], self.states[4], self._symbols.union(self._whitespaces, {self._EOF}))
+            Transition(self.states[3], self.states[4], self._symbols.union(self._whitespaces, {self._EOF_char}))
         )
         self.states[6].add_transition(
             Transition(self.states[6], self.states[7], {'='})
         )
         self.states[6].add_transition(
-            Transition(self.states[6], self.states[8], self._valid_chars.union({self._EOF}) - {'='})
+            Transition(self.states[6], self.states[8], self._valid_chars.union({self._EOF_char}) - {'='})
         )
         self.states[9].add_transition(
-            Transition(self.states[9], self.states[10], self._valid_chars.union({self._EOF}) - {'*', '/'})
+            Transition(self.states[9], self.states[10], self._valid_chars.union({self._EOF_char}) - {'*', '/'})
         )
         self.states[9].add_transition(
             Transition(self.states[9], self.states[11], {'/'})
@@ -252,7 +255,7 @@ class Scanner:
             Transition(self.states[11], self.states[11], self._all_chars - {'\n'})
         )
         self.states[11].add_transition(
-            Transition(self.states[11], self.states[12], {'\n', self._EOF})
+            Transition(self.states[11], self.states[12], {'\n', self._EOF_char})
         )
         self.states[13].add_transition(
             Transition(self.states[13], self.states[13], self._all_chars - {'*'})
@@ -360,7 +363,7 @@ class Scanner:
     def get_next_token(self) -> Optional[Tuple[str, str]]:
         """Return next token of input_file. None if EOF."""
         if self._is_file_ended:
-            return None
+            return self.EOF, self.EOF_symbol
 
         self._token_buffer.clear()
         self._current_state = self.states[0]
@@ -387,10 +390,10 @@ class Scanner:
             if self._current_char == '\n':
                 self._line_number += 1
             # file ended if EOF
-            self._is_file_ended = self._current_char == self._EOF
+            self._is_file_ended = self._current_char == self._EOF_char
             # EOF if file ended at state#0
             if self._is_file_ended and self._current_state.number == 0:
-                return None
+                return self.EOF, self.EOF_symbol
             self._token_buffer.append(self._current_char)
             # Choosing matching transition
             for transition in self._current_state.out_transitions:
@@ -400,7 +403,7 @@ class Scanner:
             else:  # No matching transition found -> Error
                 if self._is_file_ended:
                     self._handle_error(ErrorType.INCOMPLETE_TOKEN)
-                    return None
+                    return self.EOF, self.EOF_symbol
                 else:
                     self._handle_error(ErrorType.NO_TRANSITION)
                     self._token_buffer.clear()

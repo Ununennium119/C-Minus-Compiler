@@ -22,7 +22,7 @@ class Compiler:
         tokens_dict: Dict[int, List[Optional[Tuple[str, str]]]] = {}
         while True:
             current_token = self._scanner.get_next_token()
-            if current_token is None:
+            if current_token[0] == self._scanner.EOF:
                 break
             if self._scanner.line_number in tokens_dict:
                 tokens_dict[self._scanner.line_number].append(current_token)
