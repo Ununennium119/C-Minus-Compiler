@@ -3,6 +3,7 @@
 
 from typing import Dict, List, Optional, Tuple
 
+from parser import Parser
 from scanner import Scanner
 
 
@@ -16,6 +17,7 @@ class Compiler:
     def __init__(self):
         """Inits Compiler"""
         self._scanner = Scanner()
+        self._parser = Parser()
 
     def run(self):
         """Runs the compiler and compiles input.txt."""
