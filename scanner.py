@@ -42,7 +42,7 @@ class State:
         """Adds a transition to the state.
 
         :arg transition: transition to be added"""
-        self.out_transitions.append(transition)
+        self._out_transitions.append(transition)
 
     def set_terminal(self):
         """Sets the state as terminal."""
@@ -127,7 +127,8 @@ class Scanner:
     A C-Minus compiler's scanner.
 
     Attributes:
-        NUM, ID, KEYWORD, SYMBOL, COMMENT, WHITESPACE   token types
+        NUM, ID, KEYWORD, SYMBOL, COMMENT, WHITESPACE, EOF   token types
+        EOF_symbol  the symbol used for EOF
     """
     # character sets
     _EOF_char = None
@@ -159,7 +160,7 @@ class Scanner:
         """
         # states
         self._initialize_states()
-        self._current_state: State = self.states[0]
+        self._current_state: State = self._states[0]
 
         # input
         self._input_file = open("input.txt", mode="r")
@@ -192,92 +193,92 @@ class Scanner:
     def _initialize_states(self):
         """Creates states and transitions"""
         # create states
-        self.states: List[State] = [State(i) for i in range(19)]
+        self._states: List[State] = [State(i) for i in range(19)]
 
         # set terminal states
         for i in (2, 4, 5, 7, 8, 10, 12, 15, 16, 18):
-            self.states[i].set_terminal()
+            self._states[i].set_terminal()
 
         # set lookahead states
         for i in (2, 4, 8, 10, 12, 18):
-            self.states[i].set_lookahead()
+            self._states[i].set_lookahead()
 
         # add transitions
-        self.states[0].add_transition(
-            Transition(self.states[0], self.states[1], self._digits)
+        self._states[0].add_transition(
+            Transition(self._states[0], self._states[1], self._digits)
         )
-        self.states[0].add_transition(
-            Transition(self.states[0], self.states[3], self._letters)
+        self._states[0].add_transition(
+            Transition(self._states[0], self._states[3], self._letters)
         )
-        self.states[0].add_transition(
-            Transition(self.states[0], self.states[5], self._symbols - {'/', '=', '*'})
+        self._states[0].add_transition(
+            Transition(self._states[0], self._states[5], self._symbols - {'/', '=', '*'})
         )
-        self.states[0].add_transition(
-            Transition(self.states[0], self.states[6], {'='})
+        self._states[0].add_transition(
+            Transition(self._states[0], self._states[6], {'='})
         )
-        self.states[0].add_transition(
-            Transition(self.states[0], self.states[9], {'/'})
+        self._states[0].add_transition(
+            Transition(self._states[0], self._states[9], {'/'})
         )
-        self.states[0].add_transition(
-            Transition(self.states[0], self.states[16], self._whitespaces)
+        self._states[0].add_transition(
+            Transition(self._states[0], self._states[16], self._whitespaces)
         )
-        self.states[0].add_transition(
-            Transition(self.states[0], self.states[17], {'*'})
+        self._states[0].add_transition(
+            Transition(self._states[0], self._states[17], {'*'})
         )
-        self.states[1].add_transition(
-            Transition(self.states[1], self.states[1], self._digits)
+        self._states[1].add_transition(
+            Transition(self._states[1], self._states[1], self._digits)
         )
-        self.states[1].add_transition(
-            Transition(self.states[1], self.states[2], self._symbols.union(self._whitespaces, {self._EOF_char}))
+        self._states[1].add_transition(
+            Transition(self._states[1], self._states[2], self._symbols.union(self._whitespaces, {self._EOF_char}))
         )
-        self.states[3].add_transition(
-            Transition(self.states[3], self.states[3], self._alphanumerics)
+        self._states[3].add_transition(
+            Transition(self._states[3], self._states[3], self._alphanumerics)
         )
-        self.states[3].add_transition(
-            Transition(self.states[3], self.states[4], self._symbols.union(self._whitespaces, {self._EOF_char}))
+        self._states[3].add_transition(
+            Transition(self._states[3], self._states[4], self._symbols.union(self._whitespaces, {self._EOF_char}))
         )
-        self.states[6].add_transition(
-            Transition(self.states[6], self.states[7], {'='})
+        self._states[6].add_transition(
+            Transition(self._states[6], self._states[7], {'='})
         )
-        self.states[6].add_transition(
-            Transition(self.states[6], self.states[8], self._valid_chars.union({self._EOF_char}) - {'='})
+        self._states[6].add_transition(
+            Transition(self._states[6], self._states[8], self._valid_chars.union({self._EOF_char}) - {'='})
         )
-        self.states[9].add_transition(
-            Transition(self.states[9], self.states[10], self._valid_chars.union({self._EOF_char}) - {'*', '/'})
+        self._states[9].add_transition(
+            Transition(self._states[9], self._states[10], self._valid_chars.union({self._EOF_char}) - {'*', '/'})
         )
-        self.states[9].add_transition(
-            Transition(self.states[9], self.states[11], {'/'})
+        self._states[9].add_transition(
+            Transition(self._states[9], self._states[11], {'/'})
         )
-        self.states[9].add_transition(
-            Transition(self.states[9], self.states[13], {'*'})
+        self._states[9].add_transition(
+            Transition(self._states[9], self._states[13], {'*'})
         )
-        self.states[11].add_transition(
-            Transition(self.states[11], self.states[11], self._all_chars - {'\n'})
+        self._states[11].add_transition(
+            Transition(self._states[11], self._states[11], self._all_chars - {'\n'})
         )
-        self.states[11].add_transition(
-            Transition(self.states[11], self.states[12], {'\n', self._EOF_char})
+        self._states[11].add_transition(
+            Transition(self._states[11], self._states[12], {'\n', self._EOF_char})
         )
-        self.states[13].add_transition(
-            Transition(self.states[13], self.states[13], self._all_chars - {'*'})
+        self._states[13].add_transition(
+            Transition(self._states[13], self._states[13], self._all_chars - {'*'})
         )
-        self.states[13].add_transition(
-            Transition(self.states[13], self.states[14], {'*'})
+        self._states[13].add_transition(
+            Transition(self._states[13], self._states[14], {'*'})
         )
-        self.states[14].add_transition(
-            Transition(self.states[14], self.states[15], {'/'})
+        self._states[14].add_transition(
+            Transition(self._states[14], self._states[15], {'/'})
         )
-        self.states[14].add_transition(
-            Transition(self.states[14], self.states[13], self._all_chars - {'/'})
+        self._states[14].add_transition(
+            Transition(self._states[14], self._states[13], self._all_chars - {'/'})
         )
-        self.states[17].add_transition(
-            Transition(self.states[17], self.states[18], self._all_chars - {'/'})
+        self._states[17].add_transition(
+            Transition(self._states[17], self._states[18], self._all_chars - {'/'})
         )
 
     def _initialize_symbol_table(self):
         """Creates symbol table and adds keywords to it."""
-        self.symbol_table: Dict[str, int] = {}
+        self._symbol_table: Dict[str, int] = {}
         for keyword in Scanner._keywords:
-            self.symbol_table[keyword] = len(self.symbol_table) + 1
+            self._symbol_table[keyword] = len(self._symbol_table) + 1
 
     def _load_buffer(self) -> List[Optional[str]]:
         """Return a list of characters of length BUFFER_SIZE.
@@ -356,8 +357,8 @@ class Scanner:
     def _install_id(self):
         """Adds current id to symbol table if it is not."""
         token: str = self._current_token
-        if token not in self.symbol_table:
-            self.symbol_table[token] = len(self.symbol_table) + 1
+        if token not in self._symbol_table:
+            self._symbol_table[token] = len(self._symbol_table) + 1
         return token
 
     def get_next_token(self) -> Optional[Tuple[str, str]]:
@@ -366,7 +367,7 @@ class Scanner:
             return self.EOF, self.EOF_symbol
 
         self._token_buffer.clear()
-        self._current_state = self.states[0]
+        self._current_state = self._states[0]
         while True:
             # Check terminal
             if self._current_state.is_terminal:
@@ -380,7 +381,7 @@ class Scanner:
                 token = self._get_token_tuple()
                 if token[0] in {self.WHITESPACE, self.COMMENT}:
                     self._token_buffer.clear()
-                    self._current_state = self.states[0]
+                    self._current_state = self._states[0]
                 else:
                     return token
 
@@ -407,7 +408,7 @@ class Scanner:
                 else:
                     self._handle_error(ErrorType.NO_TRANSITION)
                     self._token_buffer.clear()
-                    self._current_state = self.states[0]
+                    self._current_state = self._states[0]
 
     def save_errors(self):
         """Writes errors in lexical_errors.txt."""
@@ -422,5 +423,5 @@ class Scanner:
     def save_symbols(self):
         """Writes symbol table in symbol_table.txt."""
         with open("symbol_table.txt", mode="w") as symbol_table_file:
-            for key, value in self.symbol_table.items():
+            for key, value in self._symbol_table.items():
                 symbol_table_file.write(f"{value}.\t{key}\n")
