@@ -130,6 +130,17 @@ class Scanner:
         NUM, ID, KEYWORD, SYMBOL, COMMENT, WHITESPACE, EOF   token types
         EOF_symbol  the symbol used for EOF
     """
+    # token types
+    NUM: str = "NUM"
+    ID: str = "ID"
+    KEYWORD: str = "KEYWORD"
+    SYMBOL: str = "SYMBOL"
+    COMMENT: str = "COMMENT"
+    WHITESPACE: str = "WHITESPACE"
+    EOF: str = "EOF"
+
+    EOF_symbol: str = "$"
+
     # character sets
     _EOF_char = None
     _all_chars: Set[str] = set(chr(i) for i in range(128))
@@ -141,17 +152,6 @@ class Scanner:
     _valid_chars: Set[str] = _alphanumerics.union(_symbols, _whitespaces)
 
     _keywords = {"if", "else", "void", "int", "while", "break", "switch", "default", "case", "return", "endif"}
-
-    # token types
-    NUM: str = "NUM"
-    ID: str = "ID"
-    KEYWORD: str = "KEYWORD"
-    SYMBOL: str = "SYMBOL"
-    COMMENT: str = "COMMENT"
-    WHITESPACE: str = "WHITESPACE"
-    EOF: str = "EOF"
-
-    EOF_symbol: str = "$"
 
     def __init__(self, buffer_size=1024):
         """Inits Scanner
@@ -361,8 +361,8 @@ class Scanner:
             self._symbol_table[token] = len(self._symbol_table) + 1
         return token
 
-    def get_next_token(self) -> Optional[Tuple[str, str]]:
-        """Return next token of input_file. None if EOF."""
+    def get_next_token(self) -> Tuple[str, str]:
+        """Return next token of input_file."""
         if self._is_file_ended:
             return self.EOF, self.EOF_symbol
 
@@ -394,6 +394,7 @@ class Scanner:
             self._is_file_ended = self._current_char == self._EOF_char
             # EOF if file ended at state#0
             if self._is_file_ended and self._current_state.number == 0:
+                self._input_file.close()
                 return self.EOF, self.EOF_symbol
             self._token_buffer.append(self._current_char)
             # Choosing matching transition
@@ -404,11 +405,15 @@ class Scanner:
             else:  # No matching transition found -> Error
                 if self._is_file_ended:
                     self._handle_error(ErrorType.INCOMPLETE_TOKEN)
+                    self._input_file.close()
                     return self.EOF, self.EOF_symbol
                 else:
                     self._handle_error(ErrorType.NO_TRANSITION)
                     self._token_buffer.clear()
                     self._current_state = self._states[0]
+
+    def close_input_file(self):
+        self._input_file.close()
 
     def save_errors(self):
         """Writes errors in lexical_errors.txt."""
