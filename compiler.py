@@ -3,7 +3,7 @@
 
 from typing import Dict, List, Optional, Tuple
 
-from parser import Parser
+from c_parser import Parser
 from scanner import Scanner
 
 
@@ -21,13 +21,15 @@ class Compiler:
 
     def run(self):
         """Runs the compiler and compiles input.txt."""
-        self._parser.run()
+        res = self._parser.run()
+        if res is None:
+            print("EOF reached in panic mode!")
         # tokens_dict: Dict[int, List[Optional[Tuple[str, str]]]] = {}
         # while True:
         #     current_token = self._scanner.get_next_token()
         #     if current_token[0] == self._scanner.EOF:
         #         break
-        #     if self._scanner.line_number in tokens_dict:
+        #     if self._scanner.line_number in tokedns_dict:
         #         tokens_dict[self._scanner.line_number].append(current_token)
         #     else:
         #         tokens_dict[self._scanner.line_number] = [current_token]
