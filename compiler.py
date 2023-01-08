@@ -24,6 +24,7 @@ class Compiler:
         res = self._parser.run()
         if res is None:
             print("EOF reached in panic mode!")
+        self._parser.save_errors()
         # tokens_dict: Dict[int, List[Optional[Tuple[str, str]]]] = {}
         # while True:
         #     current_token = self._scanner.get_next_token()

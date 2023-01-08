@@ -1,6 +1,6 @@
 import json
 from enum import Enum
-from typing import Set, Dict, Tuple, List
+from typing import Set, Dict, Tuple, List, Union
 
 from scanner import Scanner
 
@@ -18,27 +18,30 @@ class Error:
     A class used to represent an error in parser.
     """
 
-    def __init__(self, error_type: ErrorType, subject: str, line_number: int):
+    def __init__(self, error_type: ErrorType, subject: Union[str, Tuple[str, str]], line_number: int):
         """Inits Error.
 
         :arg error_type: ErrorType: the type of the error
-        :arg subject: str: the subject of the error
+        :arg subject: Union[str, Tuple[str, str]]: the subject of the error
         :arg line_number: int: the line number of the error
         """
+        if isinstance(subject, Tuple):
+            subject = f"({subject[0]}, {subject[1]})"
+
         self._type: ErrorType = error_type
         self._content: str = subject
         self._line_number: int = line_number
         self._content: str = ""
         if self._type == ErrorType.ILLEGAL_TOKEN:
-            self._content = f"{line_number} : syntax error , illegal {subject}"
+            self._content = f"#{line_number} : syntax error , illegal {subject}"
         elif self._type == ErrorType.TOKEN_DISCARDED:
-            self._content = f"{line_number} : syntax error , discarded {subject} from input"
+            self._content = f"#{line_number} : syntax error , discarded {subject} from input"
         elif self._type == ErrorType.STACK_CORRECTION:
             self._content = f"syntax error , discarded {subject} from stack"
         elif self._type == ErrorType.MISSING_NON_TERMINAL:
-            self._content = f"{line_number} : syntax error , missing {subject}"
+            self._content = f"#{line_number} : syntax error , missing {subject}"
         elif self._type == ErrorType.UNEXPECTED_EOF:
-            self._content = f"{line_number} : syntax error , Unexpected EOF"
+            self._content = f"#{line_number} : syntax error , Unexpected EOF"
         else:
             self._content = f"Unknown error type: {error_type}"
 
@@ -73,16 +76,11 @@ class Parser:
 
         :arg scanner: Scanner: the compiler's scanner"""
         self._scanner: Scanner = scanner
-        self._stack: list = ["0"]
+        self._stack: List[Union[str, Tuple[str, str]]] = ["0"]
         self._errors: List[Error] = []
 
         self._update_current_token()
         self._read_table()
-        self._initialize_error_file()
-
-    def _initialize_error_file(self):
-        """Initializes error file."""
-        self._error_file = open("syntax_errors.txt", mode="w")
 
     @staticmethod
     def _get_rhs_count(production: List[str]) -> int:
@@ -115,7 +113,8 @@ class Parser:
 
     def _update_current_token(self):
         """Stores next token in _current_token and updates _current_input."""
-        self._current_token = self._scanner.get_next_token()
+        self._current_token: Tuple[str, str] = self._scanner.get_next_token()
+        self._current_input: str = ""
         if self._current_token[0] in {Scanner.KEYWORD, Scanner.SYMBOL, Scanner.EOF}:
             self._current_input = self._current_token[1]
         else:
@@ -141,10 +140,10 @@ class Parser:
                     print("Parsing finished!")
                     break
                 elif action[0] == self._shift:
-                    # push current_input and shift_state into the stack
+                    # push current_token and shift_state into the stack
                     shift_state = action[1]
-                    print(f"Pushing {self._current_input} {action[1]} into the stack...")
-                    self._stack.append(self._current_input)
+                    print(f"Pushing {self._current_token} {action[1]} into the stack...")
+                    self._stack.append(self._current_token)
                     self._stack.append(shift_state)
 
                     # get next token
@@ -174,14 +173,17 @@ class Parser:
                     # problem in parse_table
                     raise Exception(f"Unknown action: {action}.")
             else:
-                if self.handle_error() == ErrorType.UNEXPECTED_EOF:
+                if self.handle_error():
+                    # return None if UNEXPECTED_EOF
                     return None
 
-    def handle_error(self):
-        """Handles syntax errors."""
-        print("!!!!!!!!!!!!!!!!!!!!\nSyntax error! Panic mode activated...")
+    def handle_error(self) -> bool:
+        """Handles syntax errors. Return True if error is UNEXPECTED_EOF"""
+        print("!!!!!!!!!!!!!!!!!!!!")
+        print("Syntax error! Panic mode activated...")
         # discard the first input
-        print(f"Discarding \'{self._current_input}\'...")
+        print(f"Discarding \'{self._current_token[1]}\' from input...")
+        self._errors.append(Error(ErrorType.ILLEGAL_TOKEN, self._current_token[1], self._scanner.line_number))
         self._update_current_token()
 
         # pop from stack until state has non-empty goto cell
@@ -193,8 +195,9 @@ class Parser:
             if any(map(lambda table_cell: table_cell[0] == self._goto,
                        goto_and_actions_of_current_state)):
                 break
-            removed_state, removed_non_terminal = self._stack.pop(), self._stack.pop()
-            print(f"{removed_state}, {removed_non_terminal}, ", end="")
+            discarded_state, discarded_item = self._stack.pop(), self._stack.pop()
+            self._errors.append(Error(ErrorType.STACK_CORRECTION, discarded_item, self._scanner.line_number))
+            print(f"{discarded_state}, {discarded_item}, ", end="")
         print("\" from stack...")
 
         goto_keys = self._get_goto_non_terminals(state)
@@ -209,22 +212,26 @@ class Parser:
             if selected_non_terminal is None:
                 if self._current_input == Scanner.EOF_symbol:
                     # input is EOF, halt parser
-                    Error(ErrorType.UNEXPECTED_EOF, None, self._scanner.line_number)
+                    self._errors.append(Error(ErrorType.UNEXPECTED_EOF, "", self._scanner.line_number))
                     print("\"")  # finishing print of discarded input
-                    return ErrorType.UNEXPECTED_EOF
+                    return True
                 else:
                     # discard input
+                    self._errors.append(Error(ErrorType.TOKEN_DISCARDED, self._current_token[1], self._scanner.line_number))
+                    print(f"{self._current_token[1]}, ", end="")
                     self._update_current_token()
-                    print(f"{self._current_input}, ", end="")
             else:
                 # input is in follow(non_terminal)
                 break
         print("\"")
         self._stack.append(selected_non_terminal)
         self._stack.append(self._parse_table[state][selected_non_terminal][1])
+        self._errors.append(Error(ErrorType.MISSING_NON_TERMINAL, selected_non_terminal, self._scanner.line_number))
         print(f"Pushing {selected_non_terminal} {self._parse_table[state][selected_non_terminal][1]} into the stack...")
+
         print("Panic mode finished!")
         print("!!!!!!!!!!!!!!!!!!!!")
+        return False
 
     def _get_goto_non_terminals(self, state: str) -> List[str]:
         """Return the non-terminals which the state has a goto with them."""
@@ -235,3 +242,12 @@ class Parser:
                 non_terminals_of_state.append(non_terminal)
         non_terminals_of_state.sort()
         return non_terminals_of_state
+
+    def save_errors(self):
+        """Writes errors in syntax_errors.txt."""
+        with open("syntax_errors.txt", "w") as error_file:
+            if len(self._errors) == 0:
+                error_file.write("There is no syntax error.")
+            else:
+                for error in self._errors:
+                    error_file.write(f"{error.content}\n")
