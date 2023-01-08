@@ -29,7 +29,7 @@ class Compiler:
         #     current_token = self._scanner.get_next_token()
         #     if current_token[0] == self._scanner.EOF:
         #         break
-        #     if self._scanner.line_number in tokedns_dict:
+        #     if self._scanner.line_number in tokens_dict:
         #         tokens_dict[self._scanner.line_number].append(current_token)
         #     else:
         #         tokens_dict[self._scanner.line_number] = [current_token]
