@@ -120,7 +120,8 @@ class Parser:
         else:
             self._current_input = self._current_token[0]
 
-    def run(self):
+    def run(self) -> bool:
+        """Parses the input. Return True if UNEXPECTED_EOF"""
         while True:
             print("--------------------------------------------------------------------------------")
             print(f"Stack: {self._stack}")
@@ -174,8 +175,9 @@ class Parser:
                     raise Exception(f"Unknown action: {action}.")
             else:
                 if self.handle_error():
-                    # return None if UNEXPECTED_EOF
-                    return None
+                    # return True if UNEXPECTED_EOF
+                    return True
+        return False
 
     def handle_error(self) -> bool:
         """Handles syntax errors. Return True if error is UNEXPECTED_EOF"""
