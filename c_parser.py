@@ -80,6 +80,7 @@ class Parser:
         self._scanner: Scanner = scanner
         self._stack: List[Union[str, Node]] = ["0"]
         self._errors: List[Error] = []
+        self._failure: bool = False
 
         self._update_current_token()
         self._read_table()
@@ -122,7 +123,7 @@ class Parser:
         else:
             self._current_input = self._current_token[0]
 
-    def run(self) -> bool:
+    def run(self):
         """Parses the input. Return True if UNEXPECTED_EOF"""
         while True:
             # get action from parse_table
@@ -136,16 +137,6 @@ class Parser:
                 # perform the action
                 if action[0] == self._accept:
                     # accept
-                    root = self._stack[1]
-                    node = Node("$")
-                    node.parent = root
-
-                    lines = []
-                    for pre, fill, node in RenderTree(root):
-                        lines.append(str(f"{pre}{node.name}\n"))
-                    # print(lines)
-                    with open("parse_tree.txt", mode='w', encoding="utf-8") as parse_tree_file:
-                        parse_tree_file.writelines(lines)
                     break
                 elif action[0] == self._shift:
                     # push current_token and shift_state into the stack
@@ -156,7 +147,7 @@ class Parser:
                     # get next token
                     self._update_current_token()
                 elif action[0] == self._reduce:
-                    # pop rhs of the production from the stack
+                    # pop rhs of the production from the stack and update parse tree
                     production_number = action[1]
                     production = self._grammar[production_number]
                     production_lhs = production[0]
@@ -187,11 +178,9 @@ class Parser:
                     raise Exception(f"Unknown action: {action}.")
             else:
                 if self.handle_error():
-                    # return True if UNEXPECTED_EOF
-                    with open("parse_tree.txt", mode='w'):
-                        pass
-                    return True
-        return False
+                    # failure if UNEXPECTED_EOF
+                    self._failure = True
+                    break
 
     def handle_error(self) -> bool:
         """Handles syntax errors. Return True if error is UNEXPECTED_EOF"""
@@ -244,6 +233,26 @@ class Parser:
                 non_terminals_of_state.append(non_terminal)
         non_terminals_of_state.sort()
         return non_terminals_of_state
+
+    def save_parse_tree(self):
+        """Writes parse tree in parse_tree.txt."""
+        # empty file if failure
+        if self._failure:
+            with open("parse_tree.txt", mode='w') as parse_tree_file:
+                parse_tree_file.write("")
+                return
+
+        root = self._stack[1]
+        # add EOF node
+        node = Node("$")
+        node.parent = root
+
+        # write parse tree in the file
+        lines = []
+        for pre, fill, node in RenderTree(root):
+            lines.append(str(f"{pre}{node.name}\n"))
+        with open("parse_tree.txt", mode='w', encoding="utf-8") as parse_tree_file:
+            parse_tree_file.writelines(lines)
 
     def save_errors(self):
         """Writes errors in syntax_errors.txt."""

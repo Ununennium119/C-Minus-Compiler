@@ -1,8 +1,6 @@
 # Mohammad Mahdi Sadeghi    99105548
 # Benyamin Maleki           99102286
 
-from typing import Dict, List, Optional, Tuple
-
 from c_parser import Parser
 from scanner import Scanner
 
@@ -21,9 +19,8 @@ class Compiler:
 
     def run(self):
         """Runs the compiler and compiles input.txt."""
-        res = self._parser.run()
-        if res is None:
-            print("EOF reached in panic mode!")
+        self._parser.run()
+        self._parser.save_parse_tree()
         self._parser.save_errors()
 
 
