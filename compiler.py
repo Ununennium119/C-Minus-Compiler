@@ -25,23 +25,6 @@ class Compiler:
         if res is None:
             print("EOF reached in panic mode!")
         self._parser.save_errors()
-        # tokens_dict: Dict[int, List[Optional[Tuple[str, str]]]] = {}
-        # while True:
-        #     current_token = self._scanner.get_next_token()
-        #     if current_token[0] == self._scanner.EOF:
-        #         break
-        #     if self._scanner.line_number in tokens_dict:
-        #         tokens_dict[self._scanner.line_number].append(current_token)
-        #     else:
-        #         tokens_dict[self._scanner.line_number] = [current_token]
-        #
-        # tokens_file = open("tokens.txt", "w")
-        # for line_num in sorted(tokens_dict.keys()):
-        #     line = ''.join([f"({token[0]}, {token[1]}) " for token in tokens_dict[line_num]])
-        #     tokens_file.write(f"{line_num}.\t{line}\n")
-        #
-        # self._scanner.save_errors()
-        # self._scanner.save_symbols()
 
 
 if __name__ == '__main__':

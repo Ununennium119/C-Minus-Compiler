@@ -2,6 +2,8 @@ import json
 from enum import Enum
 from typing import Set, Dict, Tuple, List, Union
 
+from anytree import Node, RenderTree
+
 from scanner import Scanner
 
 
@@ -18,15 +20,15 @@ class Error:
     A class used to represent an error in parser.
     """
 
-    def __init__(self, error_type: ErrorType, subject: Union[str, Tuple[str, str]], line_number: int):
+    def __init__(self, error_type: ErrorType, subject: Union[str, Node], line_number: int):
         """Inits Error.
 
         :arg error_type: ErrorType: the type of the error
         :arg subject: Union[str, Tuple[str, str]]: the subject of the error
         :arg line_number: int: the line number of the error
         """
-        if isinstance(subject, Tuple):
-            subject = f"({subject[0]}, {subject[1]})"
+        if isinstance(subject, Node):
+            subject = subject.name
 
         self._type: ErrorType = error_type
         self._content: str = subject
@@ -76,7 +78,7 @@ class Parser:
 
         :arg scanner: Scanner: the compiler's scanner"""
         self._scanner: Scanner = scanner
-        self._stack: List[Union[str, Tuple[str, str]]] = ["0"]
+        self._stack: List[Union[str, Node]] = ["0"]
         self._errors: List[Error] = []
 
         self._update_current_token()
@@ -123,9 +125,6 @@ class Parser:
     def run(self) -> bool:
         """Parses the input. Return True if UNEXPECTED_EOF"""
         while True:
-            print("--------------------------------------------------------------------------------")
-            print(f"Stack: {self._stack}")
-            print(f"Current Token: {self._current_token}")
             # get action from parse_table
             last_state = self._stack[-1]
             try:
@@ -135,16 +134,23 @@ class Parser:
                 raise Exception(f"State \"{last_state}\" does not exist.")
             if action is not None:
                 # perform the action
-                print(f"Action: {action}")
                 if action[0] == self._accept:
                     # accept
-                    print("Parsing finished!")
+                    root = self._stack[1]
+                    node = Node("$")
+                    node.parent = root
+
+                    lines = []
+                    for pre, fill, node in RenderTree(root):
+                        lines.append(str(f"{pre}{node.name}\n"))
+                    # print(lines)
+                    with open("parse_tree.txt", mode='w', encoding="utf-8") as parse_tree_file:
+                        parse_tree_file.writelines(lines)
                     break
                 elif action[0] == self._shift:
                     # push current_token and shift_state into the stack
                     shift_state = action[1]
-                    print(f"Pushing {self._current_token} {action[1]} into the stack...")
-                    self._stack.append(self._current_token)
+                    self._stack.append(Node(f"({self._current_token[0]}, {self._current_token[1]})"))
                     self._stack.append(shift_state)
 
                     # get next token
@@ -153,22 +159,28 @@ class Parser:
                     # pop rhs of the production from the stack
                     production_number = action[1]
                     production = self._grammar[production_number]
-                    print(f"Applying production {' '.join(production)}...")
-                    print("Popping -> \"", end="")
-                    for _ in range(self._get_rhs_count(production) * 2):
-                        print(self._stack.pop(), end=", ")
-                    print("\" from stack...")
+                    production_lhs = production[0]
+                    production_rhs_count = self._get_rhs_count(production)
+                    production_lhs_node: Node = Node(production_lhs)
+                    if production_rhs_count == 0:
+                        node = Node("epsilon")
+                        node.parent = production_lhs_node
+                    else:
+                        popped_nodes = []
+                        for _ in range(production_rhs_count):
+                            self._stack.pop()
+                            popped_nodes.append(self._stack.pop())
+                        for node in popped_nodes[::-1]:
+                            node.parent = production_lhs_node
 
                     # push lhs of the production and goto_state into the stack
-                    production_lhs = production[0]
                     last_state = self._stack[-1]
                     try:
                         goto_state = self._parse_table[last_state][production_lhs][1]
                     except KeyError:
                         # problem in parse_table
                         raise Exception(f"Goto[{last_state}, {production_lhs}] is empty.")
-                    print(f"Pushing {production_lhs} {goto_state} into the stack...")
-                    self._stack.append(production_lhs)
+                    self._stack.append(production_lhs_node)
                     self._stack.append(goto_state)
                 else:
                     # problem in parse_table
@@ -176,20 +188,18 @@ class Parser:
             else:
                 if self.handle_error():
                     # return True if UNEXPECTED_EOF
+                    with open("parse_tree.txt", mode='w'):
+                        pass
                     return True
         return False
 
     def handle_error(self) -> bool:
         """Handles syntax errors. Return True if error is UNEXPECTED_EOF"""
-        print("!!!!!!!!!!!!!!!!!!!!")
-        print("Syntax error! Panic mode activated...")
         # discard the first input
-        print(f"Discarding \'{self._current_token[1]}\' from input...")
         self._errors.append(Error(ErrorType.ILLEGAL_TOKEN, self._current_token[1], self._scanner.line_number))
         self._update_current_token()
 
         # pop from stack until state has non-empty goto cell
-        print("Until non-empty goto cell, popping -> \"", end="")
         while True:
             state = self._stack[-1]
             goto_and_actions_of_current_state = self._parse_table[state].values()
@@ -197,14 +207,11 @@ class Parser:
             if any(map(lambda table_cell: table_cell[0] == self._goto,
                        goto_and_actions_of_current_state)):
                 break
-            discarded_state, discarded_item = self._stack.pop(), self._stack.pop()
-            self._errors.append(Error(ErrorType.STACK_CORRECTION, discarded_item, self._scanner.line_number))
-            print(f"{discarded_state}, {discarded_item}, ", end="")
-        print("\" from stack...")
+            discarded_state, discarded_node = self._stack.pop(), self._stack.pop()
+            self._errors.append(Error(ErrorType.STACK_CORRECTION, discarded_node, self._scanner.line_number))
 
         goto_keys = self._get_goto_non_terminals(state)
         # discard input, while input not in any follow(non_terminal)
-        print("Discarding input until input in follow(non_terminal) -> \"", end=" ")
         selected_non_terminal = None
         while True:
             for non_terminal in goto_keys:
@@ -215,24 +222,17 @@ class Parser:
                 if self._current_input == Scanner.EOF_symbol:
                     # input is EOF, halt parser
                     self._errors.append(Error(ErrorType.UNEXPECTED_EOF, "", self._scanner.line_number))
-                    print("\"")  # finishing print of discarded input
                     return True
                 else:
                     # discard input
                     self._errors.append(Error(ErrorType.TOKEN_DISCARDED, self._current_token[1], self._scanner.line_number))
-                    print(f"{self._current_token[1]}, ", end="")
                     self._update_current_token()
             else:
                 # input is in follow(non_terminal)
                 break
-        print("\"")
-        self._stack.append(selected_non_terminal)
+        self._stack.append(Node(selected_non_terminal))
         self._stack.append(self._parse_table[state][selected_non_terminal][1])
         self._errors.append(Error(ErrorType.MISSING_NON_TERMINAL, selected_non_terminal, self._scanner.line_number))
-        print(f"Pushing {selected_non_terminal} {self._parse_table[state][selected_non_terminal][1]} into the stack...")
-
-        print("Panic mode finished!")
-        print("!!!!!!!!!!!!!!!!!!!!")
         return False
 
     def _get_goto_non_terminals(self, state: str) -> List[str]:
