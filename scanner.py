@@ -158,6 +158,12 @@ class Scanner:
 
         :arg buffer_size: size of the input buffer
         """
+        # symbol table
+        self.scope_stack = [0]
+        self.symbol_table: Dict[str, list] = {"lexeme": [], "type": [], "size": [], "data_type": [], "scope": []}
+        for keyword in Scanner._keywords:
+            self.add_symbol(keyword, "keyword", 0, None, 1)
+
         # states
         self._initialize_states()
         self._current_state: State = self._states[0]
@@ -175,8 +181,6 @@ class Scanner:
         self._line_number: int = 1
 
         self._errors_dict: Dict[int, List[Error]] = {}
-
-        self._initialize_symbol_table()
 
     @property
     def _current_token(self) -> Optional[str]:
@@ -274,12 +278,6 @@ class Scanner:
             Transition(self._states[17], self._states[18], self._all_chars - {'/'})
         )
 
-    def _initialize_symbol_table(self):
-        """Creates symbol table and adds keywords to it."""
-        self._symbol_table: Dict[str, int] = {}
-        for keyword in Scanner._keywords:
-            self._symbol_table[keyword] = len(self._symbol_table) + 1
-
     def _load_buffer(self) -> List[Optional[str]]:
         """Return a list of characters of length BUFFER_SIZE.
 
@@ -357,8 +355,8 @@ class Scanner:
     def _install_id(self):
         """Adds current id to symbol table if it is not."""
         token: str = self._current_token
-        if token not in self._symbol_table:
-            self._symbol_table[token] = len(self._symbol_table) + 1
+        if token not in self.symbol_table["lexeme"]:
+            self.add_symbol(token, None, None, None, None)
         return token
 
     def get_next_token(self) -> Tuple[str, str]:
@@ -412,6 +410,14 @@ class Scanner:
                     self._token_buffer.clear()
                     self._current_state = self._states[0]
 
+    def add_symbol(self, lexeme, symbol_type, size, data_type, scope):
+        """Adds a new row to the symbol table"""
+        self.symbol_table["lexeme"].append(lexeme)
+        self.symbol_table["type"].append(symbol_type)
+        self.symbol_table["size"].append(size)
+        self.symbol_table["data_type"].append(data_type)
+        self.symbol_table["scope"].append(scope)
+
     def close_input_file(self):
         self._input_file.close()
 
@@ -428,5 +434,5 @@ class Scanner:
     def save_symbols(self):
         """Writes symbol table in symbol_table.txt."""
         with open("symbol_table.txt", mode="w") as symbol_table_file:
-            for key, value in self._symbol_table.items():
+            for key, value in self.symbol_table.items():
                 symbol_table_file.write(f"{value}.\t{key}\n")
