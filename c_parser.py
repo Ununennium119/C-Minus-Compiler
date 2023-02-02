@@ -78,8 +78,15 @@ class Parser:
 
         :arg scanner: Scanner: the compiler's scanner"""
         self._scanner: Scanner = scanner
-        self._stack: List[Union[str, Node]] = ["0"]
-        self._errors: List[Error] = []
+
+        self._parse_stack: List[Union[str, Node]] = ["0"]
+        self._syntax_errors: List[Error] = []
+
+        self._semantic_stack = []
+        self._program_block = []
+        self._current_data_address = 500
+        self._break_stack = []
+
         self._failure: bool = False
 
         self._update_current_token()
@@ -123,11 +130,23 @@ class Parser:
         else:
             self._current_input = self._current_token[0]
 
+    def _get_goto_non_terminals(self, state: str) -> List[str]:
+        """Return the non-terminals which the state has a goto with them."""
+        non_terminals_of_state = []
+        state_goto_and_actions = self._parse_table[state]
+        for non_terminal in self._non_terminals:
+            if state_goto_and_actions.get(non_terminal) is not None:
+                non_terminals_of_state.append(non_terminal)
+        non_terminals_of_state.sort()
+        return non_terminals_of_state
+
     def run(self):
         """Parses the input. Return True if UNEXPECTED_EOF"""
+        self._semantic_stack.append(len(self._program_block))
+        self._program_block.append(None)
         while True:
             # get action from parse_table
-            last_state = self._stack[-1]
+            last_state = self._parse_stack[-1]
             try:
                 action = self._parse_table[last_state].get(self._current_input)
             except KeyError:
@@ -141,14 +160,15 @@ class Parser:
                 elif action[0] == self._shift:
                     # push current_token and shift_state into the stack
                     shift_state = action[1]
-                    self._stack.append(Node(f"({self._current_token[0]}, {self._current_token[1]})"))
-                    self._stack.append(shift_state)
+                    self._parse_stack.append(Node(f"({self._current_token[0]}, {self._current_token[1]})"))
+                    self._parse_stack.append(shift_state)
 
                     # get next token
                     self._update_current_token()
                 elif action[0] == self._reduce:
                     # pop rhs of the production from the stack and update parse tree
                     production_number = action[1]
+                    self.generate_code(int(production_number))
                     production = self._grammar[production_number]
                     production_lhs = production[0]
                     production_rhs_count = self._get_rhs_count(production)
@@ -159,20 +179,20 @@ class Parser:
                     else:
                         popped_nodes = []
                         for _ in range(production_rhs_count):
-                            self._stack.pop()
-                            popped_nodes.append(self._stack.pop())
+                            self._parse_stack.pop()
+                            popped_nodes.append(self._parse_stack.pop())
                         for node in popped_nodes[::-1]:
                             node.parent = production_lhs_node
 
                     # push lhs of the production and goto_state into the stack
-                    last_state = self._stack[-1]
+                    last_state = self._parse_stack[-1]
                     try:
                         goto_state = self._parse_table[last_state][production_lhs][1]
                     except KeyError:
                         # problem in parse_table
                         raise Exception(f"Goto[{last_state}, {production_lhs}] is empty.")
-                    self._stack.append(production_lhs_node)
-                    self._stack.append(goto_state)
+                    self._parse_stack.append(production_lhs_node)
+                    self._parse_stack.append(goto_state)
                 else:
                     # problem in parse_table
                     raise Exception(f"Unknown action: {action}.")
@@ -185,19 +205,19 @@ class Parser:
     def handle_error(self) -> bool:
         """Handles syntax errors. Return True if error is UNEXPECTED_EOF"""
         # discard the first input
-        self._errors.append(Error(ErrorType.ILLEGAL_TOKEN, self._current_token[1], self._scanner.line_number))
+        self._syntax_errors.append(Error(ErrorType.ILLEGAL_TOKEN, self._current_token[1], self._scanner.line_number))
         self._update_current_token()
 
         # pop from stack until state has non-empty goto cell
         while True:
-            state = self._stack[-1]
+            state = self._parse_stack[-1]
             goto_and_actions_of_current_state = self._parse_table[state].values()
             # break if the current state has a goto cell
             if any(map(lambda table_cell: table_cell[0] == self._goto,
                        goto_and_actions_of_current_state)):
                 break
-            discarded_state, discarded_node = self._stack.pop(), self._stack.pop()
-            self._errors.append(Error(ErrorType.STACK_CORRECTION, discarded_node, self._scanner.line_number))
+            discarded_state, discarded_node = self._parse_stack.pop(), self._parse_stack.pop()
+            self._syntax_errors.append(Error(ErrorType.STACK_CORRECTION, discarded_node, self._scanner.line_number))
 
         goto_keys = self._get_goto_non_terminals(state)
         # discard input, while input not in any follow(non_terminal)
@@ -210,29 +230,169 @@ class Parser:
             if selected_non_terminal is None:
                 if self._current_input == Scanner.EOF_symbol:
                     # input is EOF, halt parser
-                    self._errors.append(Error(ErrorType.UNEXPECTED_EOF, "", self._scanner.line_number))
+                    self._syntax_errors.append(Error(ErrorType.UNEXPECTED_EOF, "", self._scanner.line_number))
                     return True
                 else:
                     # discard input
-                    self._errors.append(Error(ErrorType.TOKEN_DISCARDED, self._current_token[1], self._scanner.line_number))
+                    self._syntax_errors.append(
+                        Error(ErrorType.TOKEN_DISCARDED, self._current_token[1], self._scanner.line_number))
                     self._update_current_token()
             else:
                 # input is in follow(non_terminal)
                 break
-        self._stack.append(Node(selected_non_terminal))
-        self._stack.append(self._parse_table[state][selected_non_terminal][1])
-        self._errors.append(Error(ErrorType.MISSING_NON_TERMINAL, selected_non_terminal, self._scanner.line_number))
+        self._parse_stack.append(Node(selected_non_terminal))
+        self._parse_stack.append(self._parse_table[state][selected_non_terminal][1])
+        self._syntax_errors.append(
+            Error(ErrorType.MISSING_NON_TERMINAL, selected_non_terminal, self._scanner.line_number))
         return False
 
-    def _get_goto_non_terminals(self, state: str) -> List[str]:
-        """Return the non-terminals which the state has a goto with them."""
-        non_terminals_of_state = []
-        state_goto_and_actions = self._parse_table[state]
-        for non_terminal in self._non_terminals:
-            if state_goto_and_actions.get(non_terminal) is not None:
-                non_terminals_of_state.append(non_terminal)
-        non_terminals_of_state.sort()
-        return non_terminals_of_state
+    def generate_code(self, rule_number):
+        if rule_number == 67:           # p_id_index
+            index = self._scanner.get_symbol_index(self._current_token[1])
+            self._semantic_stack.append(index)
+        elif rule_number == 70:         # p_id
+            address = self._scanner.symbol_table["address"][self._scanner.get_symbol_index(self._current_token[1])]
+            self._semantic_stack.append(address)
+        elif rule_number == 69:         # p_type
+            data_type = self._current_input
+            self._semantic_stack.append(data_type)
+        elif rule_number == 68:         # p_num
+            number = int(self._current_token[1])
+            self._semantic_stack.append(number)
+        elif rule_number == 72:         # p_num_temp
+            number = int(self._current_token[1])
+            temp = self._current_data_address
+            self._current_data_address += 4
+
+            self._program_block.append(f"(ASSIGN, #{number}, {temp},\t)")
+
+            self._semantic_stack.append(temp)
+        elif rule_number in {6, 15, 16}:    # declare_var
+            data_type = self._semantic_stack[-2]
+            index = self._semantic_stack[-1]
+            self._scanner.update_symbol(index,
+                                        symbol_type="var",
+                                        size=0,
+                                        data_type=data_type,
+                                        scope=len(self._scanner.scope_stack),
+                                        address=self._current_data_address)
+
+            self._program_block.append(f"(ASSIGN, #0, {self._current_data_address},\t)")
+
+            self.pop_semantic_stack(2)
+            self._current_data_address += 4
+        elif rule_number == 7:              # declare_array
+            data_type = self._semantic_stack[-3]
+            index = self._semantic_stack[-2]
+            size = self._semantic_stack[-1]
+            self._scanner.update_symbol(index,
+                                        symbol_type="array",
+                                        size=size,
+                                        data_type=data_type,
+                                        scope=len(self._scanner.scope_stack),
+                                        address=self._current_data_address)
+
+            self._program_block.append(f"(ASSIGN, #0, {self._current_data_address},\t)")
+
+            self._current_data_address += 4 * size
+            self.pop_semantic_stack(3)
+        elif rule_number == 73:             # declare_func
+            data_type = self._semantic_stack[-2]
+            index = self._semantic_stack[-1]
+            self._scanner.update_symbol(index,
+                                        symbol_type="function",
+                                        size=0,
+                                        data_type=data_type,
+                                        scope=len(self._scanner.scope_stack),
+                                        address=self._current_data_address)
+
+            if self._scanner.symbol_table["lexeme"][index] == "main":
+                self._program_block[self._semantic_stack[-3]] = f"(JP, {len(self._program_block)},\t,\t)"
+
+            self.pop_semantic_stack(3)
+            self._scanner.scope_stack.append(index + 1)
+        elif rule_number == 10:             # end_function
+            scope_start = self._scanner.scope_stack.pop()
+            self._scanner.pop_scope(scope_start)
+        elif rule_number == 28:             # pop_exp
+            self._semantic_stack.pop()
+        elif rule_number == 74:             # save
+            self._semantic_stack.append(len(self._program_block))
+            self._program_block.append(None)
+        elif rule_number in {31, 39}:       # jpf
+            self._program_block[self._semantic_stack[-1]] = f"(JPF, {self._semantic_stack[-2]}, {len(self._program_block)},\t)"
+            self.pop_semantic_stack(2)
+        elif rule_number == 75:             # jpf_save
+            self._program_block[self._semantic_stack[-1]] = f"(JPF, {self._semantic_stack[-2]}, {len(self._program_block) + 1},\t)"
+            self.pop_semantic_stack(2)
+            self._semantic_stack.append(len(self._program_block))
+            self._program_block.append(None)
+        elif rule_number == 32:             # jp
+            self._program_block[self._semantic_stack[-1]] = f"(JP, {len(self._program_block)},\t,\t)"
+            self._semantic_stack.pop()
+        elif rule_number == 29:             # break_jp
+            self._program_block.append(f"(JP, @{self._break_stack[-1]},\t,\t)")
+        elif rule_number == 76:             # while_start
+            self._semantic_stack.append(len(self._program_block))
+            self._program_block.append(None)
+
+            temp = self._current_data_address
+            self._break_stack.append(temp)
+            self._current_data_address += 4
+        elif rule_number == 77:             # while_condition
+            self._program_block.append(f"(JPF, {self._semantic_stack[-1]}, @{self._break_stack[-1]},\t)")
+            self.pop_semantic_stack(1)
+        elif rule_number == 33:             # while_end
+            self._program_block.append(f"(JP, {self._semantic_stack[-1] + 1},\t,\t)")
+            self._program_block[self._semantic_stack[-1]] = f"(ASSIGN, #{len(self._program_block)}, {self._break_stack[-1]}.\t)"
+            self.pop_semantic_stack(1)
+            self._break_stack.pop()
+        elif rule_number == 42:             # assign
+            self._program_block.append(f"(ASSIGN, {self._semantic_stack[-1]}, {self._semantic_stack[-2]},\t)")
+            self.pop_semantic_stack(1)
+        elif rule_number == 45:             # array_access
+            temp1 = self._current_data_address
+            temp2 = self._current_data_address + 4
+            self._current_data_address += 8
+
+            self._program_block.append(f"(MULT, #4, {self._semantic_stack[-1]}, {temp1})")
+            self._program_block.append(f"(ADD, {temp1}, #{self._semantic_stack[-2]}, {temp2})")
+
+            self.pop_semantic_stack(2)
+            self._semantic_stack.append(f"@{temp2}")
+        elif rule_number == 71:             # p_op
+            operation = self._current_input
+            self._semantic_stack.append(operation)
+        elif rule_number in {46, 50, 54}:       # op
+            operation = self._semantic_stack[-2]
+            if operation == "==":
+                assembly_operation = "EQ"
+            elif operation == "<":
+                assembly_operation = "LT"
+            elif operation == "*":
+                assembly_operation = "MULT"
+            elif operation == "/":
+                assembly_operation = "DIV"
+            elif operation == "+":
+                assembly_operation = "ADD"
+            elif operation == "-":
+                assembly_operation = "SUB"
+            else:
+                raise ValueError("Operation is invalid!")
+            temp = self._current_data_address
+            self._current_data_address += 4
+
+            self._program_block.append(f"({assembly_operation}, {self._semantic_stack[-3]}, {self._semantic_stack[-1]}, {temp})")
+            self.pop_semantic_stack(3)
+            self._semantic_stack.append(temp)
+        elif rule_number == 62:             # end_call
+            self._program_block.append(f"(PRINT, {self._semantic_stack[-1]},\t,\t)")
+            self.pop_semantic_stack(2)
+            self._semantic_stack.append(None)
+        return
+
+    def pop_semantic_stack(self, count: int):
+        self._semantic_stack = self._semantic_stack[:len(self._semantic_stack) - count]
 
     def save_parse_tree(self):
         """Writes parse tree in parse_tree.txt."""
@@ -242,7 +402,7 @@ class Parser:
                 parse_tree_file.write("")
                 return
 
-        root = self._stack[1]
+        root = self._parse_stack[1]
         # add EOF node
         node = Node("$")
         node.parent = root
@@ -257,8 +417,14 @@ class Parser:
     def save_errors(self):
         """Writes errors in syntax_errors.txt."""
         with open("syntax_errors.txt", "w") as error_file:
-            if len(self._errors) == 0:
+            if len(self._syntax_errors) == 0:
                 error_file.write("There is no syntax error.")
             else:
-                for error in self._errors:
+                for error in self._syntax_errors:
                     error_file.write(f"{error.content}\n")
+
+    def save_program_block(self):
+        """Writes program block in output.txt"""
+        with open("output.txt", "w") as output_file:
+            for i in range(len(self._program_block)):
+                output_file.write(f"{i}\t{self._program_block[i]}\n")

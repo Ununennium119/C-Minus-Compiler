@@ -160,9 +160,9 @@ class Scanner:
         """
         # symbol table
         self.scope_stack = [0]
-        self.symbol_table: Dict[str, list] = {"lexeme": [], "type": [], "size": [], "data_type": [], "scope": []}
+        self.symbol_table: Dict[str, list] = {"lexeme": [], "type": [], "size": [], "data_type": [], "scope": [], "address": []}
         for keyword in Scanner._keywords:
-            self.add_symbol(keyword, "keyword", 0, None, 1)
+            self.add_symbol(keyword, "keyword", 0, None, 1, None)
 
         # states
         self._initialize_states()
@@ -410,13 +410,46 @@ class Scanner:
                     self._token_buffer.clear()
                     self._current_state = self._states[0]
 
-    def add_symbol(self, lexeme, symbol_type, size, data_type, scope):
+    def add_symbol(self,
+                   lexeme: str,
+                   symbol_type: str = None,
+                   size: int = 0,
+                   data_type: str = None,
+                   scope: int = None,
+                   address: int = None):
         """Adds a new row to the symbol table"""
         self.symbol_table["lexeme"].append(lexeme)
         self.symbol_table["type"].append(symbol_type)
         self.symbol_table["size"].append(size)
         self.symbol_table["data_type"].append(data_type)
         self.symbol_table["scope"].append(scope)
+        self.symbol_table["address"].append(address)
+
+    def update_symbol(self,
+                      index: int,
+                      symbol_type: str = None,
+                      size: int = None,
+                      data_type: str = None,
+                      scope: int = None,
+                      address: int = None):
+        if symbol_type is not None:
+            self.symbol_table["type"][index] = symbol_type
+        if size is not None:
+            self.symbol_table["size"][index] = size
+        if data_type is not None:
+            self.symbol_table["data_type"][index] = data_type
+        if scope is not None:
+            self.symbol_table["scope"][index] = scope
+        if address is not None:
+            self.symbol_table["address"][index] = address
+
+    def get_symbol_index(self, lexeme: str) -> int:
+        """Return index of the lexeme in the symbol table"""
+        return self.symbol_table["lexeme"].index(lexeme)
+
+    def pop_scope(self, scope_start: int):
+        for column in self.symbol_table.values():
+            column.pop(len(column) - scope_start)
 
     def close_input_file(self):
         self._input_file.close()

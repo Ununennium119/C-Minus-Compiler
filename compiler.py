@@ -22,6 +22,7 @@ class Compiler:
         self._parser.run()
         self._parser.save_parse_tree()
         self._parser.save_errors()
+        self._parser.save_program_block()
 
 
 if __name__ == '__main__':
