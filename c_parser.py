@@ -247,124 +247,191 @@ class Parser:
         return False
 
     def generate_code(self, rule_number):
+        """Generates intermediate code based on the rule_number."""
         if rule_number == 67:           # p_id_index
-            index = self._scanner.get_symbol_index(self._current_token[1])
+            # push index of identifier into the semantic stack
+            lexeme = self._current_token[1]
+            index = self._scanner.get_symbol_index(lexeme)
             self._semantic_stack.append(index)
         elif rule_number == 70:         # p_id
-            address = self._scanner.symbol_table["address"][self._scanner.get_symbol_index(self._current_token[1])]
+            # push address of identifier into the semantic stack
+            lexeme = self._current_token[1]
+            index = self._scanner.get_symbol_index(lexeme)
+            address = self._scanner.symbol_table["address"][index]
             self._semantic_stack.append(address)
         elif rule_number == 69:         # p_type
-            data_type = self._current_input
+            # push type into the semantic stack
+            data_type = self._current_token[1]
             self._semantic_stack.append(data_type)
         elif rule_number == 68:         # p_num
+            # push number into the semantic stack
             number = int(self._current_token[1])
             self._semantic_stack.append(number)
         elif rule_number == 72:         # p_num_temp
+            # push #number into the semantic stack
             number = int(self._current_token[1])
-            temp = self._current_data_address
-            self._current_data_address += 4
-
-            self._program_block.append(f"(ASSIGN, #{number}, {temp},\t)")
-
-            self._semantic_stack.append(temp)
+            self._semantic_stack.append(f"#{number}")
         elif rule_number in {6, 15, 16}:    # declare_var
+            # assign an address to the identifier, assign 0 to the variable in the program block
+            # and update identifier's row in the symbol table
             data_type = self._semantic_stack[-2]
             index = self._semantic_stack[-1]
+            self.pop_semantic_stack(2)
+
+            self._program_block.append(f"(ASSIGN, #0, {self._current_data_address},\t)")
             self._scanner.update_symbol(index,
                                         symbol_type="var",
                                         size=0,
                                         data_type=data_type,
                                         scope=len(self._scanner.scope_stack),
                                         address=self._current_data_address)
-
-            self._program_block.append(f"(ASSIGN, #0, {self._current_data_address},\t)")
-
-            self.pop_semantic_stack(2)
             self._current_data_address += 4
         elif rule_number == 7:              # declare_array
+            # assign an address to the identifier, assign 0 to the start of the array in the program block
+            # and update identifier's row in the symbol table
             data_type = self._semantic_stack[-3]
             index = self._semantic_stack[-2]
             size = self._semantic_stack[-1]
+            self.pop_semantic_stack(3)
+
+            self._program_block.append(f"(ASSIGN, #0, {self._current_data_address},\t)")
             self._scanner.update_symbol(index,
                                         symbol_type="array",
                                         size=size,
                                         data_type=data_type,
                                         scope=len(self._scanner.scope_stack),
                                         address=self._current_data_address)
-
-            self._program_block.append(f"(ASSIGN, #0, {self._current_data_address},\t)")
-
             self._current_data_address += 4 * size
-            self.pop_semantic_stack(3)
         elif rule_number == 73:             # declare_func
+            # update identifier's row in the symbol table, initialize next scope
+            # and if function is "main" add a jump to the start of function
             data_type = self._semantic_stack[-2]
             index = self._semantic_stack[-1]
+            self.pop_semantic_stack(2)
+
             self._scanner.update_symbol(index,
                                         symbol_type="function",
                                         size=0,
                                         data_type=data_type,
                                         scope=len(self._scanner.scope_stack),
-                                        address=self._current_data_address)
-
-            if self._scanner.symbol_table["lexeme"][index] == "main":
-                self._program_block[self._semantic_stack[-3]] = f"(JP, {len(self._program_block)},\t,\t)"
-
-            self.pop_semantic_stack(3)
+                                        address=len(self._program_block))
             self._scanner.scope_stack.append(index + 1)
+            if self._scanner.symbol_table["lexeme"][index] == "main":
+                line_number = self._semantic_stack[-1]
+                self.pop_semantic_stack(1)
+                self._program_block[line_number] = f"(JP, {len(self._program_block)},\t,\t)"
         elif rule_number == 10:             # end_function
+            # deletes the current scope
             scope_start = self._scanner.scope_stack.pop()
             self._scanner.pop_scope(scope_start)
         elif rule_number == 28:             # pop_exp
-            self._semantic_stack.pop()
+            # remove last assignment output from the semantic stack
+            self.pop_semantic_stack(1)
         elif rule_number == 74:             # save
-            self._semantic_stack.append(len(self._program_block))
+            # save an instruction in program block's current line
+            current_line_number = len(self._program_block)
+            self._semantic_stack.append(current_line_number)
             self._program_block.append(None)
-        elif rule_number in {31, 39}:       # jpf
-            self._program_block[self._semantic_stack[-1]] = f"(JPF, {self._semantic_stack[-2]}, {len(self._program_block)},\t)"
+        elif rule_number in {31, 80}:       # jpf
+            # add a JPF instruction in line number with a condition both stored in semantic stack to the current line
+            line_number = self._semantic_stack[-1]
+            condition = self._semantic_stack[-2]
             self.pop_semantic_stack(2)
+
+            current_line_number = len(self._program_block)
+            self._program_block[line_number] = f"(JPF, {condition}, {current_line_number},\t)"
         elif rule_number == 75:             # jpf_save
-            self._program_block[self._semantic_stack[-1]] = f"(JPF, {self._semantic_stack[-2]}, {len(self._program_block) + 1},\t)"
+            # add a JPF instruction in line number with a condition both stored in semantic stack to the next line
+            # and save an instruction in program block's current line
+            line_number = self._semantic_stack[-1]
+            condition = self._semantic_stack[-2]
             self.pop_semantic_stack(2)
+
+            current_line_number = len(self._program_block)
+            self._program_block[line_number] = f"(JPF, {condition}, {current_line_number + 1},\t)"
             self._semantic_stack.append(len(self._program_block))
             self._program_block.append(None)
         elif rule_number == 32:             # jp
-            self._program_block[self._semantic_stack[-1]] = f"(JP, {len(self._program_block)},\t,\t)"
-            self._semantic_stack.pop()
+            # add a JP instruction in line number stored in semantic stack to the current line
+            line_number = self._semantic_stack[-1]
+            self.pop_semantic_stack(1)
+
+            current_line_number = len(self._program_block)
+            self._program_block[line_number] = f"(JP, {current_line_number},\t,\t)"
         elif rule_number == 29:             # break_jp
-            self._program_block.append(f"(JP, @{self._break_stack[-1]},\t,\t)")
-        elif rule_number == 76:             # while_start
-            self._semantic_stack.append(len(self._program_block))
-            self._program_block.append(None)
-
-            temp = self._current_data_address
-            self._break_stack.append(temp)
-            self._current_data_address += 4
+            # add an indirect jump to the top of the break stack
+            break_temp = self._break_stack[-1]
+            self._program_block.append(f"(JP, @{break_temp},\t,\t)")
+        elif rule_number == 76:             # save_break_temp
+            # save a temp in break stack
+            dest = self.get_temp()
+            self._break_stack.append(dest)
         elif rule_number == 77:             # while_condition
-            self._program_block.append(f"(JPF, {self._semantic_stack[-1]}, @{self._break_stack[-1]},\t)")
+            # add a JPF in the current line with condition stored in semantic stack to top of the break stack
+            condition = self._semantic_stack[-1]
             self.pop_semantic_stack(1)
+
+            break_temp = self._break_stack[-1]
+            self._program_block.append(f"(JPF, {condition}, @{break_temp},\t)")
         elif rule_number == 33:             # while_end
-            self._program_block.append(f"(JP, {self._semantic_stack[-1] + 1},\t,\t)")
-            self._program_block[self._semantic_stack[-1]] = f"(ASSIGN, #{len(self._program_block)}, {self._break_stack[-1]}.\t)"
+            # add a JP to the start of while and an ASSIGN for break temp at the start of while
+            line_number = self._semantic_stack[-1]
             self.pop_semantic_stack(1)
-            self._break_stack.pop()
-        elif rule_number == 42:             # assign
-            self._program_block.append(f"(ASSIGN, {self._semantic_stack[-1]}, {self._semantic_stack[-2]},\t)")
-            self.pop_semantic_stack(1)
-        elif rule_number == 45:             # array_access
-            temp1 = self._current_data_address
-            temp2 = self._current_data_address + 4
-            self._current_data_address += 8
 
-            self._program_block.append(f"(MULT, #4, {self._semantic_stack[-1]}, {temp1})")
-            self._program_block.append(f"(ADD, {temp1}, #{self._semantic_stack[-2]}, {temp2})")
+            break_temp = self._break_stack.pop()
+            self._program_block.append(f"(JP, {line_number + 1},\t,\t)")
 
+            current_line_number = len(self._program_block)
+            self._program_block[line_number] = f"(ASSIGN, #{current_line_number}, {break_temp}.\t)"
+        elif rule_number == 79:             # dummy_save
+            # save #1 and an instruction in the semantic stack
+            current_line_number = len(self._program_block)
+            self._semantic_stack.append("#1")
+            self._semantic_stack.append(current_line_number)
+            self._program_block.append(None)
+        elif rule_number == 78:             # case_condition
+            # add an EQ which compares switch variable and case number and store result temp in semantic stack
+            dest = self.get_temp()
+            number = int(self._current_token[1])
+            switch_variable = self._semantic_stack[-1]
+            self._program_block.append(f"(EQ, {switch_variable}, #{number}, {dest})")
+            self._semantic_stack.append(dest)
+        elif rule_number == 36:             # switch_end
+            # remove switch variable from semantic stack and add an ASSIGN for break temp at the start of switch
+            line_number = self._semantic_stack[-2]
             self.pop_semantic_stack(2)
+
+            current_line_number = len(self._program_block)
+            break_temp = self._break_stack.pop()
+            self._program_block[line_number] = f"(ASSIGN, #{current_line_number}, {break_temp}.\t)"
+        elif rule_number == 42:             # assign
+            # add an assign instruction
+            source_var = self._semantic_stack[-1]
+            dest_var = self._semantic_stack[-2]
+            self.pop_semantic_stack(1)
+
+            self._program_block.append(f"(ASSIGN, {source_var}, {dest_var},\t)")
+        elif rule_number == 45:             # array_access
+            # calculate selected array element address and save result temp in semantic stack
+            array_index = self._semantic_stack[-1]
+            array_base_address = self._semantic_stack[-2]
+            self.pop_semantic_stack(2)
+
+            temp1 = self.get_temp()
+            temp2 = self.get_temp()
+            self._program_block.append(f"(MULT, #4, {array_index}, {temp1})")
+            self._program_block.append(f"(ADD, {temp1}, #{array_base_address}, {temp2})")
             self._semantic_stack.append(f"@{temp2}")
         elif rule_number == 71:             # p_op
+            # push operation to semantic stack
             operation = self._current_input
             self._semantic_stack.append(operation)
         elif rule_number in {46, 50, 54}:       # op
+            # add operation instruction
+            operand_1 = self._semantic_stack[-3]
             operation = self._semantic_stack[-2]
+            operand_2 = self._semantic_stack[-1]
+            self.pop_semantic_stack(3)
             if operation == "==":
                 assembly_operation = "EQ"
             elif operation == "<":
@@ -379,20 +446,26 @@ class Parser:
                 assembly_operation = "SUB"
             else:
                 raise ValueError("Operation is invalid!")
-            temp = self._current_data_address
-            self._current_data_address += 4
-
-            self._program_block.append(f"({assembly_operation}, {self._semantic_stack[-3]}, {self._semantic_stack[-1]}, {temp})")
-            self.pop_semantic_stack(3)
-            self._semantic_stack.append(temp)
+            dest = self.get_temp()
+            self._program_block.append(f"({assembly_operation}, {operand_1}, {operand_2}, {dest})")
+            self._semantic_stack.append(dest)
         elif rule_number == 62:             # end_call
-            self._program_block.append(f"(PRINT, {self._semantic_stack[-1]},\t,\t)")
+            # add a PRINT instruction for output
+            value = self._semantic_stack[-1]
             self.pop_semantic_stack(2)
+
+            self._program_block.append(f"(PRINT, {value},\t,\t)")
             self._semantic_stack.append(None)
         return
 
     def pop_semantic_stack(self, count: int):
         self._semantic_stack = self._semantic_stack[:len(self._semantic_stack) - count]
+
+    def get_temp(self) -> int:
+        temp = self._current_data_address
+        self._current_data_address += 4
+
+        return temp
 
     def save_parse_tree(self):
         """Writes parse tree in parse_tree.txt."""

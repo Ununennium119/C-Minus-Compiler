@@ -356,7 +356,7 @@ class Scanner:
         """Adds current id to symbol table if it is not."""
         token: str = self._current_token
         if token not in self.symbol_table["lexeme"]:
-            self.add_symbol(token, None, None, None, None)
+            self.add_symbol(token, None, 0, None, None)
         return token
 
     def get_next_token(self) -> Tuple[str, str]:
@@ -445,7 +445,15 @@ class Scanner:
 
     def get_symbol_index(self, lexeme: str) -> int:
         """Return index of the lexeme in the symbol table"""
-        return self.symbol_table["lexeme"].index(lexeme)
+        # return self.symbol_table["lexeme"].index(lexeme)
+        current_scope_end = len(self.symbol_table["lexeme"])
+        for current_scope_start in self.scope_stack[::-1]:
+            if lexeme not in self.symbol_table["lexeme"][current_scope_start:current_scope_end]:
+                current_scope_end = current_scope_start
+                continue
+            else:
+                return self.symbol_table["lexeme"].index(lexeme, current_scope_start, current_scope_end)
+        return -1
 
     def pop_scope(self, scope_start: int):
         for column in self.symbol_table.values():
