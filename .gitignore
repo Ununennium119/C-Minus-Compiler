@@ -4,4 +4,5 @@
 
 /testcases/*
 /*.txt
+/*.zip
 /tester.py

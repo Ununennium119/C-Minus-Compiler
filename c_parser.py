@@ -82,6 +82,7 @@ class Parser:
         self._parse_stack: List[Union[str, Node]] = ["0"]
         self._syntax_errors: List[Error] = []
 
+        self._semantic_errors = []
         self._semantic_stack = []
         self._program_block = []
         self._current_data_address = 500
@@ -487,14 +488,20 @@ class Parser:
         with open("parse_tree.txt", mode='w', encoding="utf-8") as parse_tree_file:
             parse_tree_file.writelines(lines)
 
-    def save_errors(self):
-        """Writes errors in syntax_errors.txt."""
-        with open("syntax_errors.txt", "w") as error_file:
+    def save_syntax_errors(self):
+        """Writes syntax errors in syntax_errors.txt."""
+        with open("syntax_errors.txt", "w") as syntax_errors_file:
             if len(self._syntax_errors) == 0:
-                error_file.write("There is no syntax error.")
+                syntax_errors_file.write("There is no syntax error.")
             else:
                 for error in self._syntax_errors:
-                    error_file.write(f"{error.content}\n")
+                    syntax_errors_file.write(f"{error.content}\n")
+
+    def save_semantic_errors(self):
+        """Writes semantic errors in semantic_errors.txt"""
+        with open("semantic_errors.txt", "w") as semantic_errors_file:
+            if len(self._semantic_errors) == 0:
+                semantic_errors_file.write("The input program is semantically correct.")
 
     def save_program_block(self):
         """Writes program block in output.txt"""

@@ -20,8 +20,7 @@ class Compiler:
     def run(self):
         """Runs the compiler and compiles input.txt."""
         self._parser.run()
-        self._parser.save_parse_tree()
-        self._parser.save_errors()
+        self._parser.save_semantic_errors()
         self._parser.save_program_block()
 
 
