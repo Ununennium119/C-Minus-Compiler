@@ -1,2 +1,3 @@
 # C-Minus-Compiler
-Python Code which compiles simple C-Minus programs
+
+A simple C-Minus compiler written in python.
